@@ -1,0 +1,14 @@
+# OS
+Thumbs.db
+Desktop.ini
+
+# 에디터
+.vscode/
+.idea/
+
+# 로컬 전용 설정 (권한 등)
+.claude/settings.local.json
+
+# 임시 파일
+*.log
+*.tmp

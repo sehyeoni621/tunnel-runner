@@ -1,0 +1,340 @@
+/* =====================================================================
+   꿀잠 러너 — UI 테마
+   팔레트: 라벤더 #B8A9E0 · 크림 #FFF3D6 · 네이비 #2B2D5C
+           별빛 #FFE28A · 핑크 #FFB5C0
+   ===================================================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #14162e;
+  font-family: "Gowun Dodum", "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+/* ===== 게임 캔버스 (전체 화면) ===== */
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ===== UI 오버레이 ===== */
+#ui-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* 캔버스 조작 방해 금지, 버튼만 개별 허용 */
+  color: #EDE9FB;
+}
+
+#ui-layer button {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: "Jua", sans-serif;
+}
+
+/* ===== HUD (점수 + 코인 + 버튼) ===== */
+#hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+#score-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#score {
+  font-family: "Jua", sans-serif;
+  font-size: 24px;
+  color: #FFF3D6;
+  text-shadow: 0 0 10px rgba(184, 169, 224, 0.9);
+  letter-spacing: 1px;
+}
+
+#best {
+  font-size: 12px;
+  color: rgba(184, 169, 224, 0.9);
+  letter-spacing: 1px;
+}
+
+#coin-hud {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(43, 45, 92, 0.85);
+  border: 1.5px solid rgba(255, 226, 138, 0.55);
+  border-radius: 14px;
+  padding: 4px 12px 4px 8px;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+#coin-count {
+  font-family: "Jua", sans-serif;
+  font-size: 16px;
+  color: #FFE28A;
+}
+
+#hud-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+#pause-btn, #shop-btn {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #FFF3D6;
+  background: rgba(43, 45, 92, 0.85);
+  border: 1.5px solid rgba(184, 169, 224, 0.5);
+  border-radius: 13px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+#pause-btn:hover, #shop-btn:hover {
+  background: rgba(75, 78, 140, 0.9);
+  transform: translateY(-1px);
+}
+
+/* ===== 조작 안내 힌트 ===== */
+#hint {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  color: rgba(216, 210, 240, 0.9);
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(43, 45, 92, 0.9);
+  animation: hint-fade 6s ease forwards;
+  white-space: nowrap;
+}
+
+@keyframes hint-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ===== 상점 ===== */
+#shop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 13, 32, 0.72);
+  pointer-events: auto;
+}
+
+#shop-panel {
+  width: min(860px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(165deg, #262a55, #1b1d3e);
+  border: 1.5px solid rgba(184, 169, 224, 0.45);
+  border-radius: 26px;
+  padding: 22px 24px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+#shop-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+#shop-head h2 {
+  font-family: "Jua", sans-serif;
+  font-size: 26px;
+  color: #FFF3D6;
+  flex: 1;
+}
+
+#shop-wallet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #2B2D5C;
+  border: 1.5px solid rgba(255, 226, 138, 0.55);
+  border-radius: 15px;
+  padding: 5px 14px 5px 9px;
+}
+
+#shop-coins {
+  font-family: "Jua", sans-serif;
+  font-size: 18px;
+  color: #FFE28A;
+}
+
+#shop-close {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  color: #FFF3D6;
+  background: rgba(184, 169, 224, 0.18);
+  border: 1.5px solid rgba(184, 169, 224, 0.4);
+  border-radius: 12px;
+}
+
+#shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.shop-item {
+  position: relative;
+  background: #FFF7E6;
+  border: 2px solid rgba(43, 45, 92, 0.12);
+  border-radius: 20px;
+  padding: 12px 12px 13px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  pointer-events: auto;
+}
+
+.shop-item:hover { transform: translateY(-2px); }
+
+.shop-item.equipped { border-color: #FFE28A; box-shadow: 0 0 0 2px rgba(255, 226, 138, 0.5), 0 10px 24px rgba(0,0,0,0.3); }
+
+.shop-item .no {
+  position: absolute;
+  top: 9px;
+  left: 12px;
+  font-family: "Jua", sans-serif;
+  font-size: 11px;
+  color: #B8A9E0;
+  z-index: 2;
+}
+
+.shop-item canvas {
+  display: block;
+  width: 100%;
+  border-radius: 14px;
+  margin-bottom: 9px;
+}
+
+.shop-item .name {
+  font-family: "Jua", sans-serif;
+  font-size: 16px;
+  color: #2B2D5C;
+  line-height: 1.1;
+}
+
+.shop-item .tag {
+  font-size: 10px;
+  color: #8A86A6;
+  margin-top: 2px;
+  min-height: 13px;
+}
+
+.shop-item .price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 7px;
+  font-family: "Jua", sans-serif;
+  font-size: 13px;
+  border-radius: 14px;
+  padding: 3px 10px;
+  background: #2B2D5C;
+  color: #FFE28A;
+}
+
+.shop-item .price.owned { background: rgba(143, 209, 154, 0.35); color: #1c3a24; }
+.shop-item .price.equipped-label { background: #FFE28A; color: #2B2D5C; }
+.shop-item .price.locked { opacity: 0.55; }
+
+.shop-item.denied { animation: deny-shake 0.3s; }
+
+@keyframes deny-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* ===== 게임 오버 화면 ===== */
+#game-over {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  background: rgba(12, 13, 32, 0.7);
+}
+
+#game-over h1 {
+  font-family: "Jua", sans-serif;
+  font-size: 52px;
+  letter-spacing: 2px;
+  color: #FFF3D6;
+  text-shadow: 0 4px 0 rgba(43, 45, 92, 0.8), 0 0 28px rgba(255, 181, 192, 0.5);
+}
+
+#final-score {
+  font-family: "Jua", sans-serif;
+  font-size: 30px;
+  color: #B8A9E0;
+}
+
+#run-coins {
+  font-family: "Jua", sans-serif;
+  font-size: 18px;
+  color: #FFE28A;
+}
+
+#new-record {
+  font-family: "Jua", sans-serif;
+  font-size: 18px;
+  color: #FFD76A;
+  text-shadow: 0 0 12px rgba(255, 200, 80, 0.8);
+}
+
+/* 구름 모양 버튼 */
+#restart-btn {
+  margin-top: 10px;
+  padding: 14px 38px;
+  font-size: 20px;
+  color: #2B2D5C;
+  background: #FFF3D6;
+  border: 3px solid #2B2D5C;
+  border-radius: 40px;
+  box-shadow: 0 5px 0 rgba(43, 45, 92, 0.55), 0 14px 30px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#restart-btn:hover { transform: translateY(-2px); }
+#restart-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 rgba(43, 45, 92, 0.55);
+}
+
+.hidden {
+  display: none !important;
+}

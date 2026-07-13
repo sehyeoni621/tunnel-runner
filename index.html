@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>꿀잠 러너 — Tunnel Runner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 게임 캔버스 -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- UI 오버레이 (캔버스 위에 겹쳐지는 HTML UI) -->
+  <div id="ui-layer">
+    <div id="hud">
+      <div id="score-box">
+        <span id="score">0 m</span>
+        <span id="best">BEST 0 m</span>
+        <div id="coin-hud">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 2 L14.6 8.2 L21.5 8.8 L16.3 13.2 L17.9 20 L12 16.4 L6.1 20 L7.7 13.2 L2.5 8.8 L9.4 8.2 Z" fill="#FFE28A" stroke="#2B2D5C" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          <span id="coin-count">0</span>
+        </div>
+      </div>
+      <div id="hud-buttons">
+        <button id="shop-btn" title="상점">
+          <svg viewBox="0 0 64 64" width="22" height="22"><circle cx="32" cy="14" r="5" fill="none" stroke="#FFF3D6" stroke-width="4"/><path d="M32 19 L32 26" stroke="#FFF3D6" stroke-width="4"/><path d="M12 46 L32 26 L52 46 Z" fill="rgba(184,169,224,0.35)" stroke="#FFF3D6" stroke-width="4" stroke-linejoin="round"/><line x1="12" y1="46" x2="52" y2="46" stroke="#FFF3D6" stroke-width="4"/></svg>
+        </button>
+        <button id="pause-btn" title="일시정지"></button>
+      </div>
+    </div>
+
+    <!-- 조작 안내 (시작 후 서서히 사라짐) -->
+    <div id="hint">← → 이동 &nbsp;·&nbsp; Space 점프 &nbsp;·&nbsp; 공중에서 벽 쪽으로 밀면 벽 타기 &nbsp;·&nbsp; P 일시정지</div>
+
+    <!-- 상점 (초기엔 숨김) -->
+    <div id="shop" class="hidden">
+      <div id="shop-panel">
+        <div id="shop-head">
+          <h2>키구루미 상점</h2>
+          <div id="shop-wallet">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2 L14.6 8.2 L21.5 8.8 L16.3 13.2 L17.9 20 L12 16.4 L6.1 20 L7.7 13.2 L2.5 8.8 L9.4 8.2 Z" fill="#FFE28A" stroke="#2B2D5C" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            <span id="shop-coins">0</span>
+          </div>
+          <button id="shop-close">✕</button>
+        </div>
+        <div id="shop-grid"></div>
+      </div>
+    </div>
+
+    <!-- 게임 오버 화면 (초기엔 숨김) -->
+    <div id="game-over" class="hidden">
+      <h1>앗, 잠 깼어!</h1>
+      <p id="final-score">0 m</p>
+      <p id="run-coins">⭐ +0</p>
+      <p id="new-record" class="hidden">🏆 최고 기록 갱신!</p>
+      <button id="restart-btn">다시 자러 가기</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
