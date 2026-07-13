@@ -97,8 +97,8 @@ const CONFIG = {
 const LEVELS = [
   { name: '거실 탈출',       goal: 300,  base: 560, max: 1050, holes: false, obstacles: ['sibling'],                                 reward: 30 },
   { name: '복도의 아빠',     goal: 450,  base: 640, max: 1350, holes: true,  obstacles: ['sibling', 'dad'],                          reward: 50 },
-  { name: '자니? 조XX',      goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo'],                    reward: 80 },
-  { name: '게임하자 김XX',   goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim'],             reward: 120 },
+  { name: '자니? 조혜민',    goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo'],                    reward: 80 },
+  { name: '게임하자 김예은', goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim'],             reward: 120 },
   { name: '새벽 3시의 릴스', goal: 1000, base: 920, max: 2100, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme'],     reward: 200 },
 ];
 
@@ -108,8 +108,8 @@ const LEVELS = [
 const OBSTACLES = {
   sibling: { w: 150, h: 40,  len: 80,  lethal: true,  label: '동생',  hint: '점프로 넘기' },
   dad:     { w: 168, h: 170, len: 110, lethal: true,  label: '아빠',  hint: '좌우로 피하기' },
-  jo:      { w: 118, h: 150, len: 90,  lethal: true,  label: '조XX', hint: '벽에서 튀어나옴', edge: true },
-  kim:     { w: 130, h: 155, len: 90,  lethal: true,  label: '김XX', hint: '중앙에서 좌우로 흔들림', sway: 92 },
+  jo:      { w: 118, h: 150, len: 90,  lethal: true,  label: '조혜민', hint: '벽에서 튀어나옴', edge: true, caught: '저런~' },
+  kim:     { w: 130, h: 155, len: 90,  lethal: true,  label: '김예은', hint: '중앙에서 좌우로 흔들림', sway: 92, caught: '김예은에게 불친절했어요ㅠㅠ' },
   meme:    { w: 96,  h: 118, len: 70,  lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
 };
 

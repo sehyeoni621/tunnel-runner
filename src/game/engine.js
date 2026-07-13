@@ -107,6 +107,7 @@ const state = {
   coverT: 0,          // 밈 말풍선이 화면을 가리는 시간
   shake: 0,           // 화면 흔들림
   deathBy: '',        // 사망 원인 (게임오버 문구)
+  deathMsg: '',       // 방해꾼별 커스텀 게임오버 멘트 (없으면 기본 템플릿)
 
   // --- React UI로 넘기는 값 (DOM을 직접 만지지 않는다) ---
   runId: 0,           // 런이 바뀔 때마다 증가 (힌트 애니메이션 재생용 key)
@@ -294,6 +295,7 @@ function resetRun(level) {
   state.coverT = 0;
   state.shake = 0;
   state.deathBy = '';
+  state.deathMsg = '';
   player.x = 0;
   player.height = 0;
   player.vy = 0;
@@ -339,10 +341,11 @@ function selectLevel(level) {
 
 
 // ===== 사망 / 클리어 =====
-function die(cause) {
+function die(cause, msg) {
   if (state.phase !== 'playing') return;
   state.phase = 'dying';
   state.deathBy = cause;
+  state.deathMsg = msg || '';
   state.shake = 0.35;
   const p = playerScreenPos();
   if (cause === 'hole') {
@@ -616,7 +619,7 @@ function checkObstacles() {
     if (player.height >= top - 4 || player.height + size * 0.55 <= bottom) continue;
 
     o.hit = true;
-    if (spec.lethal) { die(spec.label); return; }
+    if (spec.lethal) { die(spec.label, spec.caught); return; }
     hitMeme(o);
   }
 }
@@ -827,7 +830,7 @@ function update(dt) {
         goal: lv.goal,
         reason: state.deathBy === 'hole'
           ? '구멍에 빠져 잠이 확 깼어요'
-          : `${state.deathBy}에게 붙잡혔어요`,
+          : (state.deathMsg || `${state.deathBy}에게 붙잡혔어요`),
         runCoins: state.runCoins,
         newRecord,
       };
