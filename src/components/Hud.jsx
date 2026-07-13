@@ -58,7 +58,12 @@ export default function Hud({ game, onPause, onShop }) {
       {/* 런이 바뀔 때마다(key) 힌트 페이드 애니메이션을 다시 재생 */}
       {game.phase === 'playing' && (
         <div id="hint" key={game.runId}>
-          ← → 이동 · Space 점프 · 벽에 붙어 계속 밀면 그 벽으로 올라타기 · P 일시정지
+          <span className="hint-keyboard">
+            ← → 이동 · Space 점프 · 벽에 붙어 계속 밀면 그 벽으로 올라타기 · P 일시정지
+          </span>
+          <span className="hint-touch">
+            ◀ ▶ 눌러서 이동 · 화면 탭 또는 점프 버튼 · 벽에 붙인 채 계속 누르면 벽 타기
+          </span>
         </div>
       )}
     </>

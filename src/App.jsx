@@ -6,6 +6,7 @@ import Shop from './components/Shop.jsx';
 import ClearPanel from './components/ClearPanel.jsx';
 import GameOverPanel from './components/GameOverPanel.jsx';
 import MemeCover from './components/MemeCover.jsx';
+import TouchControls from './components/TouchControls.jsx';
 
 // 캔버스 게임 엔진(60fps 루프)은 React 밖에서 돌고,
 // React는 엔진이 통지하는 스냅샷으로 UI 레이어만 그린다.
@@ -29,11 +30,20 @@ export default function App() {
 
   return (
     <>
-      <canvas id="game-canvas" ref={canvasRef} />
+      {/* 캔버스를 탭하면 점프 (모바일) */}
+      <canvas
+        id="game-canvas"
+        ref={canvasRef}
+        onPointerDown={(e) => { if (e.pointerType !== 'mouse') engine.tap(); }}
+      />
 
       <div id="ui-layer">
         {game && (
           <>
+            {game.phase === 'playing' && !shopOpen && (
+              <TouchControls onMove={engine.setMove} onJump={engine.jump} />
+            )}
+
             {game.phase === 'home' && (
               <HomeScreen game={game} onStart={engine.startLevel} onSelect={engine.selectLevel} onShop={openShop} />
             )}

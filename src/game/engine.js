@@ -23,10 +23,19 @@ let listener = null;   // React 구독자
 let shopIsOpen = false;
 let lastSnapshot = '';
 
+// 논리 화면 크기(CSS 픽셀). 캔버스 버퍼는 DPR만큼 키워서 레티나/모바일에서도 선명하게.
+const view = { w: 0, h: 0, dpr: 1 };
+
 function resizeCanvas() {
   if (!canvas) return;
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2); // 3x 기기에서 과도한 부하 방지
+  view.w = window.innerWidth;
+  view.h = window.innerHeight;
+  view.dpr = dpr;
+  canvas.width = Math.round(view.w * dpr);
+  canvas.height = Math.round(view.h * dpr);
+  canvas.style.width = `${view.w}px`;
+  canvas.style.height = `${view.h}px`;
 }
 
 // ===== 저장 데이터 =====
@@ -180,8 +189,8 @@ function project(x, y, z) {
   const ry = x * sn + y * c;
   const s = CONFIG.camera.fov / z;
   return {
-    x: canvas.width / 2 + (rx - cam.x) * s,
-    y: canvas.height / 2 + (ry - cam.y) * s,
+    x: view.w / 2 + (rx - cam.x) * s,
+    y: view.h / 2 + (ry - cam.y) * s,
     s,
   };
 }
@@ -247,7 +256,22 @@ function onKeyUp(e) {
 
 function onVisibility() {
   if (document.hidden && state.phase === 'playing') state.paused = true;
+  input.left = false;
+  input.right = false;
   emit();
+}
+
+// ===== 터치 조작 (React의 TouchControls / 캔버스 탭이 호출) =====
+// dir: -1 왼쪽, 1 오른쪽, 0 손 뗌
+function setMove(dir) {
+  input.left = dir < 0;
+  input.right = dir > 0;
+}
+
+// 캔버스를 탭하면 점프 (게임오버 화면에서는 재시작)
+function tap() {
+  if (state.phase === 'gameover') { startLevel(state.level); return; }
+  if (state.phase === 'playing') jump();
 }
 
 
@@ -864,12 +888,12 @@ function shade(rgb, z) {
 
 function drawStars() {
   ctx.fillStyle = '#101228';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, view.w, view.h);
   for (const s of stars) {
     const a = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(state.time * s.twinkle + s.phase));
     ctx.fillStyle = `rgba(210, 225, 255, ${a})`;
     ctx.beginPath();
-    ctx.arc(s.x * canvas.width, s.y * canvas.height, s.r, 0, Math.PI * 2);
+    ctx.arc(s.x * view.w, s.y * view.h, s.r, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -909,7 +933,7 @@ function drawTunnel() {
 
   // --- 꿈나라 빛 (터널 끝 소실점의 따뜻한 빛) ---
   const vp = project(0, 0, T.depth);
-  const glowR = Math.max(canvas.width, canvas.height) * 0.09;
+  const glowR = Math.max(view.w, view.h) * 0.09;
   const g = ctx.createRadialGradient(vp.x, vp.y, 0, vp.x, vp.y, glowR);
   g.addColorStop(0, 'rgba(255, 226, 138, 0.5)');
   g.addColorStop(1, 'rgba(255, 226, 138, 0)');
@@ -1382,18 +1406,21 @@ function drawParticles() {
 
 function drawPauseOverlay() {
   ctx.fillStyle = 'rgba(12, 13, 32, 0.55)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, view.w, view.h);
   ctx.fillStyle = PAL.cream;
   ctx.font = '42px Jua, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('잠깐 쉬는 중…', canvas.width / 2, canvas.height / 2 - 20);
+  ctx.fillText('잠깐 쉬는 중…', view.w / 2, view.h / 2 - 20);
   ctx.font = '17px "Gowun Dodum", sans-serif';
   ctx.fillStyle = 'rgba(184, 169, 224, 0.9)';
-  ctx.fillText('P 또는 ▶ 버튼으로 계속', canvas.width / 2, canvas.height / 2 + 28);
+  ctx.fillText('P 또는 ▶ 버튼으로 계속', view.w / 2, view.h / 2 + 28);
 }
 
 function render() {
+  // 캔버스 버퍼는 DPR 배율 → 모든 그리기는 CSS 픽셀(view) 좌표로 통일
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+
   ctx.save();
   if (state.shake > 0) {
     const s = state.shake * 26;
@@ -1506,5 +1533,8 @@ export {
   togglePause,
   setShopOpen,
   buySkin,
+  setMove,
+  jump,
+  tap,
   LEVELS,
 };

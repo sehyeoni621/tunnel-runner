@@ -17,6 +17,15 @@ html, body {
   background: #14162e;
   font-family: "Gowun Dodum", "Segoe UI", system-ui, sans-serif;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;  /* 모바일 탭 시 파란 하이라이트 제거 */
+  overscroll-behavior: none;                 /* 당겨서 새로고침 방지 */
+  touch-action: manipulation;                /* 더블탭 확대 방지 */
+}
+
+#root {
+  width: 100%;
+  height: 100%;
 }
 
 /* ===== 게임 캔버스 (전체 화면) ===== */
@@ -26,6 +35,7 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
+  touch-action: none;   /* 캔버스에서 스크롤/줌 대신 게임 조작만 */
 }
 
 /* ===== UI 오버레이 ===== */
@@ -695,6 +705,75 @@ button.ghost:hover {
   font-size: 14px;
   color: rgba(255, 181, 192, 0.95);
   letter-spacing: 1px;
+}
+
+/* ===== 모바일 · 태블릿 터치 조작 패드 =====
+   기본은 숨김 → 터치 기기(마우스 없음)에서만 표시 */
+#touch-controls {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  padding: 0 calc(20px + env(safe-area-inset-left)) 0 calc(20px + env(safe-area-inset-right));
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.touch-move {
+  display: flex;
+  gap: 14px;
+}
+
+.touch-btn {
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 78px;
+  height: 78px;
+  font-size: 26px;
+  color: #FFF3D6;
+  background: rgba(43, 45, 92, 0.6);
+  border: 2px solid rgba(184, 169, 224, 0.5);
+  border-radius: 50%;
+  backdrop-filter: blur(2px);
+  transition: transform 0.08s, background 0.08s;
+}
+
+.touch-btn:active {
+  background: rgba(120, 110, 190, 0.85);
+  transform: scale(0.94);
+}
+
+.touch-btn.jump {
+  width: 96px;
+  height: 96px;
+  font-size: 20px;
+  font-family: "Jua", sans-serif;
+  background: rgba(255, 226, 138, 0.28);
+  border-color: rgba(255, 226, 138, 0.7);
+}
+
+/* 조작 안내는 입력 방식에 맞는 문구만 보여준다 */
+.hint-touch { display: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  #touch-controls { display: flex; }
+  .hint-keyboard { display: none; }
+  .hint-touch { display: inline; }
+
+  #hint {
+    bottom: calc(140px + env(safe-area-inset-bottom));
+    font-size: 12px;
+    white-space: normal;
+    text-align: center;
+    width: 84vw;
+  }
+
+  /* 손가락이 닿기 쉬운 크기로 */
+  #pause-btn, #shop-btn { width: 48px; height: 48px; }
 }
 
 .hidden {
