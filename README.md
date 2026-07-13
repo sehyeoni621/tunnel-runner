@@ -1,7 +1,7 @@
 # 꿀잠 러너 (Tunnel Runner)
 
-우주에 떠 있는 3D 사각 터널 속을 달리는 엔드리스 러너 게임. 순수 HTML5 Canvas 2D로
-구현했으며, 빌드 도구 없이 `index.html` 하나로 바로 실행됩니다.
+우주에 떠 있는 3D 사각 터널 속을 달려 침대까지 완주하는 러너 게임.
+**React + Vite** 앱 안에서 순수 Canvas 2D로 렌더링합니다 (게임 로직은 `src/game/`, UI는 React 컴포넌트).
 
 > 컨셉: 지영이 잠을 방해하는 요인들을 피해 침대까지 달려가 꿀잠을 자는 러너.
 > 현실 → 꿈나라로 빠져드는 터널을 원근 투영으로 렌더링합니다.
@@ -36,25 +36,29 @@
 
 ## 에셋 (데이터 주도)
 
-캐릭터·스킨 렌더링은 [`manifest.json`](manifest.json)만 참조합니다. 규격에 맞는
-스프라이트 시트 PNG를 [`assets/characters/jiyoung/`](assets/characters/jiyoung/skins/README.md)에
-넣으면 코드 수정 없이 벡터 렌더러 대신 이미지가 사용됩니다. PNG가 없으면
-디자인보드 팔레트 기반 벡터 캐릭터로 폴백합니다.
+캐릭터·스킨 렌더링은 [`public/manifest.json`](public/manifest.json)만 참조합니다. 규격에 맞는
+스프라이트 시트 PNG를 `public/assets/characters/jiyoung/`에 넣으면 코드 수정 없이
+벡터 렌더러 대신 이미지가 사용됩니다. PNG가 없으면 시안 팔레트 기반 벡터 캐릭터로 폴백합니다.
 
 ## 로컬 실행
 
-`index.html`을 브라우저에서 열거나, 정적 서버를 띄웁니다:
-
 ```bash
-python -m http.server 8123
-# → http://localhost:8123
+npm install
+npm run dev      # 개발 서버 (http://localhost:5173)
+npm run build    # 프로덕션 빌드 → dist/
+npm run preview  # 빌드 결과 미리보기
 ```
 
-## 배포
+## 배포 (Vercel)
 
-정적 사이트이므로 Vercel에서 저장소를 연결하면 추가 설정 없이 배포됩니다
-(빌드 명령 없음, 루트를 그대로 서빙).
+Vite 프로젝트라 Vercel이 자동 인식합니다 ([`vercel.json`](vercel.json)에 명시).
+
+1. [vercel.com/new](https://vercel.com/new) → GitHub 저장소 `tunnel-runner` Import
+2. Framework Preset **Vite**, Build `npm run build`, Output `dist` — 자동 설정됨
+3. **Deploy** → 이후 `main` 푸시마다 자동 재배포
+
+또는 CLI: `npx vercel`(최초) → `npx vercel --prod`(프로덕션).
 
 ## 기술 스택
 
-HTML5 Canvas 2D · 순수 JavaScript (외부 게임 엔진·의존성 없음)
+React 18 · Vite 5 · Canvas 2D (게임 로직은 외부 엔진 없이 순수 JS)
