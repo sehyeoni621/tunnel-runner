@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "tunnel-runner",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8123"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "8123", "--strictPort"],
       "port": 8123
     }
   ]

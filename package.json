@@ -1,0 +1,20 @@
+{
+  "name": "kkuljam-runner",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "꿀잠 러너 — 방해꾼을 피해 침대까지 달리는 터널 러너 (React + Canvas)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

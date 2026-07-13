@@ -1,284 +1,79 @@
 // =====================================================================
-// 꿀잠 러너 (Tunnel Runner) — 우주 터널 엔드리스 러너
-// 순수 Canvas 2D. 소실점 원근 투영으로 3D 터널을 그린다.
+// 꿀잠 러너 — 게임 엔진 (React와 분리된 순수 게임 코어)
+//
+// React는 이 모듈을 초기화(init)하고, 상태 변화를 구독(subscribe)해서 UI만 그린다.
+// 캔버스 렌더링 · 물리 · 게임 루프는 React 렌더 사이클 밖에서 돌아간다 (60fps 유지).
 //
 // [중력 전환 구조]
 // 물리는 항상 "현재 면이 바닥"인 로컬 좌표계에서 계산한다.
 // state.surface(0~3)가 어느 월드 면 위를 달리는지 기억하고,
 // 렌더링만 state.roll 각도로 회전시켜 90° 전환 연출을 만든다.
-// 면 인덱스: 0=바닥, 1=왼쪽 벽, 2=천장, 3=오른쪽 벽 (월드 기준)
-//
-// [캐릭터/스킨 — 데이터 주도]
-// 코드는 manifest.json(없으면 내장 기본값)만 참조한다.
-// manifest의 sheet 경로에 PNG 스프라이트 시트가 있으면 자동 사용,
-// 없으면 디자인보드 팔레트 기반 벡터 렌더러로 그린다.
-// → 이미지 파일만 규격대로 넣으면 코드 수정 없이 교체됨 (기획서 8절)
 // =====================================================================
 
-'use strict';
+import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES } from './config.js';
+import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
+import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
+import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet } from './save.js';
 
-// ===== 팔레트 (캐릭터_스킨_디자인보드 기준) =====
-const PAL = {
-  lavender: '#B8A9E0',
-  cream: '#FFF3D6',
-  navy: '#2B2D5C',
-  star: '#FFE28A',
-  pink: '#FFB5C0',
-  skin: '#FBE3D3',
-  hair: '#6B4A32',
-};
-
-// ===== 튜닝용 설정값 =====
-const CONFIG = {
-  // 터널 (월드 단위) — 중력 전환을 위해 정사각형 단면
-  tunnel: {
-    size: 380,        // 터널 단면 한 변
-    depth: 4200,      // 렌더링할 깊이 (앞으로 보이는 거리)
-    segmentLen: 210,  // 세그먼트(격자 한 칸) 길이
-  },
-
-  // 카메라 / 원근 투영
-  camera: {
-    fov: 320,         // 투영 배율 (클수록 화면이 확대됨)
-    nearZ: 48,        // 이보다 가까운 건 그리지 않음
-    followX: 0.55,    // 플레이어 좌우 이동을 카메라가 따라가는 비율
-    followY: 0.3,     // 점프 높이를 카메라가 따라가는 비율
-  },
-
-  // 게임 진행
-  run: {
-    baseSpeed: 620,     // 시작 전진 속도 (월드단위/초)
-    accel: 9,           // 초당 속도 증가량
-    maxSpeed: 2100,     // 최고 속도
-  },
-
-  // 플레이어
-  player: {
-    z: 260,           // 카메라로부터의 고정 깊이
-    moveSpeed: 520,   // 좌우 이동 속도
-    jumpVel: 640,     // 점프 초기 속도
-    gravity: 1850,    // 중력 가속도
-    size: 34,         // 히트박스 크기 (월드 단위)
-  },
-
-  // 구멍(장애물)
-  hole: {
-    safeZone: 1800,       // 시작 직후 구멍이 안 나오는 거리
-    minLen: 190,
-    maxLen: 400,          // 점프 가능 거리로 자동 제한됨
-    minWidth: 110,
-    maxWidth: 190,
-    minGap: 340,
-    maxGap: 820,          // 속도 오를수록 좁아짐
-    currentFaceBias: 0.5, // 현재 달리는 면에 구멍이 생길 확률
-  },
-
-  // 별사탕 코인
-  coin: {
-    safeZone: 900,      // 시작 후 첫 코인까지 거리
-    rowMin: 4,          // 한 줄 최소 개수
-    rowMax: 6,
-    spacing: 92,        // 줄 안에서 코인 간격
-    minGap: 480,        // 줄 사이 간격
-    maxGap: 1400,
-    radius: 15,         // 코인 크기 (월드 단위)
-    hover: 16,          // 바닥에서 띄우는 높이
-    collectDist: 48,    // 획득 판정 거리
-  },
-
-  // 중력 전환 (벽 타기)
-  gravityShift: {
-    rollDecay: 9,     // 회전 연출 감쇠 속도
-  },
-
-  // 방해요인(장애물) 스폰
-  obstacle: {
-    safeZone: 1500,   // 시작 직후 장애물이 안 나오는 거리
-    minGap: 620,
-    maxGap: 1250,     // 속도가 오를수록 반응 시간 확보를 위해 늘어남
-  },
-
-  // 침대(골인 지점)
-  bed: {
-    len: 260,         // 침대 깊이 (월드 단위)
-    width: 210,
-    height: 62,
-  },
-
-  stars: { count: 190 },
-  score: { unitsPerMeter: 100 }, // 월드 100단위 = 1m
-};
-
-// ===== 레벨 (기획서 3절: 1~5 레벨제) =====
-// goal = 침대까지의 거리(m). 레벨이 오를수록 빨라지고 방해요인이 늘어난다.
-const LEVELS = [
-  { name: '거실 탈출',       goal: 300,  base: 560, max: 1050, holes: false, obstacles: ['sibling'],                                 reward: 30 },
-  { name: '복도의 아빠',     goal: 450,  base: 640, max: 1350, holes: true,  obstacles: ['sibling', 'dad'],                          reward: 50 },
-  { name: '자니? 조XX',      goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo'],                    reward: 80 },
-  { name: '게임하자 김XX',   goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim'],             reward: 120 },
-  { name: '새벽 3시의 릴스', goal: 1000, base: 920, max: 2100, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme'],     reward: 200 },
-];
-
-// ===== 방해요인 스펙 =====
-// w/h = 히트박스 크기(월드 단위). h가 낮으면 점프로 넘을 수 있다 (점프 최고점 ≈ 110).
-// lethal: false = 죽지 않고 감속/시야 방해만
-const OBSTACLES = {
-  sibling: { w: 150, h: 40,  len: 80,  lethal: true,  label: '동생',  hint: '점프로 넘기' },
-  dad:     { w: 168, h: 170, len: 110, lethal: true,  label: '아빠',  hint: '좌우로 피하기' },
-  jo:      { w: 118, h: 150, len: 90,  lethal: true,  label: '조XX', hint: '벽에서 튀어나옴', edge: true },
-  kim:     { w: 130, h: 155, len: 90,  lethal: true,  label: '김XX', hint: '중앙에서 좌우로 흔들림', sway: 92 },
-  meme:    { w: 96,  h: 118, len: 70,  lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
-};
-
-// 밈 라인업 (기획서 5절 — 실존 인물/영상 없이 정서만 패러디)
-const MEMES = [
-  { text: '냐냐냥!!!',      rgb: [186, 132, 255] },
-  { text: '좋🤙다👍',       rgb: [255, 214, 120] },
-  { text: '파라파라~',      rgb: [130, 200, 255] },
-  { text: '영혼 없는 춤…',  rgb: [180, 160, 240] },
-  { text: '옆자리 고를래?', rgb: [255, 150, 190] },
-];
-
-// ===== 에셋 매니페스트 (manifest.json이 있으면 덮어씀) =====
-let MANIFEST = {
-  jiyoung: {
-    sheet: 'assets/characters/jiyoung/base_sheet.png',
-    frameW: 256, frameH: 256, cols: 4, rows: 4,
-    anims: {
-      run:      { frames: [[0,0],[1,0],[2,0],[3,0],[0,1],[1,1]], fps: 12 },
-      jumpRise: { frames: [[2,1]] },
-      jumpPeak: { frames: [[3,1]] },
-      jumpFall: { frames: [[0,2]] },
-      fall:     { frames: [[2,2],[3,2]], fps: 8 },
-      sleep:    { frames: [[0,3],[1,3]], fps: 4 },
-    },
-    hitboxScale: 0.7,
-  },
-  skins: [
-    { key:'base',    name:'지영 기본', tag:'크림 키구루미 · 부스스 머리', price:0,   hood:'#FFF3D6', inner:'#F7E9D2', accent:'#B8A9E0', sheet:'assets/characters/jiyoung/base_sheet.png' },
-    { key:'bear',    name:'곰돌이',   tag:'둥근 귀 · 흰 주둥이',   price:100, hood:'#E5CDA6', inner:'#FFF7EA', accent:'#8A6A46', sheet:'assets/characters/jiyoung/skins/bear_sheet.png' },
-    { key:'rabbit',  name:'토끼',     tag:'긴 귀 · 분홍 안감',     price:100, hood:'#F1ECF3', inner:'#FFB5C0', accent:'#E39AAB', sheet:'assets/characters/jiyoung/skins/rabbit_sheet.png' },
-    { key:'cat',     name:'고양이',   tag:'세모 귀 · 꼬리',        price:150, hood:'#A9AEC3', inner:'#8B90A8', accent:'#6E7288', sheet:'assets/characters/jiyoung/skins/cat_sheet.png' },
-    { key:'dog',     name:'강아지',   tag:'늘어진 귀 · 혀',        price:150, hood:'#EEDCB4', inner:'#B98A5C', accent:'#8A6A46', sheet:'assets/characters/jiyoung/skins/dog_sheet.png' },
-    { key:'chick',   name:'병아리',   tag:'작은 부리 · 볏',        price:150, hood:'#FFDD73', inner:'#FF9F45', accent:'#E8890C', sheet:'assets/characters/jiyoung/skins/chick_sheet.png' },
-    { key:'pony',    name:'조랑말',   tag:'갈기 · 콧등',           price:200, hood:'#C89A6B', inner:'#FFF3D6', accent:'#7A5232', sheet:'assets/characters/jiyoung/skins/pony_sheet.png' },
-    { key:'penguin', name:'펭귄',     tag:'주황 부리 · 빨간 볏',   price:200, hood:'#3A3F63', inner:'#FFF7EA', accent:'#E85D5D', sheet:'assets/characters/jiyoung/skins/penguin_sheet.png' },
-    { key:'shark',   name:'상어',     tag:'등지느러미 · 이빨',     price:200, hood:'#7FC5E6', inner:'#FFF7EA', accent:'#5FA8CC', sheet:'assets/characters/jiyoung/skins/shark_sheet.png' },
-    { key:'walrus',  name:'바다코끼리', tag:'상아 · 수염',         price:250, hood:'#B08968', inner:'#FFF7EA', accent:'#E85D5D', sheet:'assets/characters/jiyoung/skins/walrus_sheet.png' },
-    { key:'dino',    name:'공룡',     tag:'골판 · 이빨 · 꼬리',    price:250, hood:'#6F9B4E', inner:'#4E7A38', accent:'#3A3F63', sheet:'assets/characters/jiyoung/skins/dino_sheet.png' },
-    { key:'giraffe', name:'기린',     tag:'뿔 · 갈기',             price:300, hood:'#F3E2BE', inner:'#E8A25C', accent:'#8A6A46', sheet:'assets/characters/jiyoung/skins/giraffe_sheet.png' },
-    { key:'unicorn', name:'유니콘',   tag:'금 뿔 · 무지개 (프리미엄)', price:500, hood:'#FBFAFF', inner:'#F5C542', accent:'#B98BEA', sheet:'assets/characters/jiyoung/skins/unicorn_sheet.png' },
-  ],
-  coin: { sheet: 'assets/coin_sheet.png', frameW: 128, frames: 4, fps: 10 },
-};
-
-// 스프라이트 시트 이미지 (로드 성공 시에만 사용, 실패하면 벡터 렌더러)
-const sprites = {}; // key → { img, ok }
-
-function loadSpriteSheets() {
-  for (const s of MANIFEST.skins) {
-    if (!s.sheet) continue;
-    const img = new Image();
-    const entry = { img, ok: false };
-    img.onload = () => { entry.ok = true; };
-    img.src = s.sheet;
-    sprites[s.key] = entry;
-  }
-}
-
-function skinByKey(key) {
-  return MANIFEST.skins.find((s) => s.key === key) || MANIFEST.skins[0];
-}
-
-// ===== 캔버스 / DOM =====
-const canvas = document.getElementById('game-canvas');
-const ctx = canvas.getContext('2d');
-const scoreEl = document.getElementById('score');
-const bestEl = document.getElementById('best');
-const coinCountEl = document.getElementById('coin-count');
-const pauseBtn = document.getElementById('pause-btn');
-const shopBtn = document.getElementById('shop-btn');
-const shopEl = document.getElementById('shop');
-const shopGridEl = document.getElementById('shop-grid');
-const shopCoinsEl = document.getElementById('shop-coins');
-const shopCloseBtn = document.getElementById('shop-close');
-const gameOverEl = document.getElementById('game-over');
-const finalScoreEl = document.getElementById('final-score');
-const failReasonEl = document.getElementById('fail-reason');
-const runCoinsEl = document.getElementById('run-coins');
-const newRecordEl = document.getElementById('new-record');
-const restartBtn = document.getElementById('restart-btn');
-
-// 홈 화면
-const homeEl = document.getElementById('home');
-const homeBestEl = document.getElementById('home-best');
-const homeCoinsEl = document.getElementById('home-coins');
-const homeSkinEl = document.getElementById('home-skin');
-const homeSkinNameEl = document.getElementById('home-skin-name');
-const levelSelectEl = document.getElementById('level-select');
-const startBtn = document.getElementById('start-btn');
-const homeShopBtn = document.getElementById('home-shop-btn');
-const homeHelpBtn = document.getElementById('home-help-btn');
-const homeHelpEl = document.getElementById('home-help');
-const overHomeBtn = document.getElementById('over-home-btn');
-
-// 인게임 HUD / 레벨 진행도
-const hudEl = document.getElementById('hud');
-const hintEl = document.getElementById('hint');
-const levelNameEl = document.getElementById('level-name');
-const progressFillEl = document.getElementById('progress-fill');
-const memeCoverEl = document.getElementById('meme-cover');
-
-// 클리어 화면
-const clearEl = document.getElementById('clear');
-const clearLevelEl = document.getElementById('clear-level');
-const clearScoreEl = document.getElementById('clear-score');
-const clearCoinsEl = document.getElementById('clear-coins');
-const clearUnlockEl = document.getElementById('clear-unlock');
-const nextBtn = document.getElementById('next-btn');
-const clearHomeBtn = document.getElementById('clear-home-btn');
-
-const ICON_MOON = '<svg viewBox="0 0 64 64" width="22" height="22"><path d="M42 8 A24 24 0 1 0 42 56 A18 18 0 1 1 42 8 Z" fill="#FFE28A" stroke="#2B2D5C" stroke-width="3" stroke-linejoin="round"/></svg>';
-const ICON_PLAY = '<svg viewBox="0 0 64 64" width="18" height="18"><path d="M20 12 L52 32 L20 52 Z" fill="#FFF3D6"/></svg>';
+// ===== 캔버스 =====
+let canvas = null;
+let ctx = null;
+let rafId = 0;
+let listener = null;   // React 구독자
+let shopIsOpen = false;
+let lastSnapshot = '';
 
 function resizeCanvas() {
+  if (!canvas) return;
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 }
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
 
-// ===== 저장 데이터 (최고 기록 + 지갑/스킨) =====
-const BEST_KEY = 'tunnelRunner.best';
-const SAVE_KEY = 'kkuljam.save';
-let bestMeters = 0;
-try { bestMeters = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) {}
+// ===== 저장 데이터 =====
+let bestMeters = loadBest();
+let wallet = loadWallet(LEVELS.length);
 
-// unlocked = 해금된 최고 레벨(1~5), cleared = 클리어한 레벨 번호 목록
-let wallet = { coins: 0, owned: ['base'], equipped: 'base', unlocked: 1, cleared: [] };
-try {
-  const raw = JSON.parse(localStorage.getItem(SAVE_KEY));
-  if (raw && Array.isArray(raw.owned)) {
-    wallet = {
-      coins: raw.coins | 0,
-      owned: raw.owned,
-      equipped: raw.equipped || 'base',
-      unlocked: Math.min(Math.max(raw.unlocked | 0, 1), LEVELS.length),
-      cleared: Array.isArray(raw.cleared) ? raw.cleared : [],
-    };
-  }
-} catch (e) {}
+function saveBest(m) { bestMeters = m; persistBest(m); }
+function saveWallet() { persistWallet(wallet); }
 
-function saveBest(m) {
-  bestMeters = m;
-  try { localStorage.setItem(BEST_KEY, String(m)); } catch (e) {}
+// ===== React로 내보내는 스냅샷 =====
+// 매 프레임 전체를 밀어 넣으면 60fps 리렌더가 되므로, 값이 실제로 바뀔 때만 통지한다.
+function snapshot() {
+  const lv = currentLevel();
+  return {
+    phase: state.phase,
+    paused: state.paused,
+    level: state.level,
+    selected: state.selected,
+    levelName: `${state.level}. ${lv.name}`,
+    runId: state.runId,
+    scoreM: Math.floor(state.distance / CONFIG.score.unitsPerMeter),
+    bestM: bestMeters,
+    progress: state.goalZ ? Math.min(1, (state.distance + CONFIG.player.z) / state.goalZ) : 0,
+    coins: wallet.coins,
+    owned: wallet.owned,
+    equipped: wallet.equipped,
+    unlocked: wallet.unlocked,
+    cleared: wallet.cleared,
+    meme: state.memeText ? { text: state.memeText, token: state.memeToken } : null,
+    clear: state.clearInfo,
+    over: state.overInfo,
+  };
 }
-function saveWallet() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(wallet)); } catch (e) {}
-}
-function syncCoinHud() {
-  coinCountEl.textContent = wallet.coins;
-  shopCoinsEl.textContent = wallet.coins;
+
+function emit() {
+  if (!listener) return;
+  const s = snapshot();
+  // 진행도는 0.5% 단위로만 통지 (불필요한 리렌더 방지)
+  const key = JSON.stringify([
+    s.phase, s.paused, s.level, s.selected, s.runId, s.scoreM, s.bestM,
+    Math.round(s.progress * 200), s.coins, s.owned.length, s.equipped,
+    s.unlocked, s.cleared.length, s.meme && s.meme.token,
+    s.clear ? s.clear.ready : false, !!s.over,
+  ]);
+  if (key === lastSnapshot) return;
+  lastSnapshot = key;
+  listener(s);
 }
 
 // ===== 게임 상태 =====
@@ -303,6 +98,13 @@ const state = {
   coverT: 0,          // 밈 말풍선이 화면을 가리는 시간
   shake: 0,           // 화면 흔들림
   deathBy: '',        // 사망 원인 (게임오버 문구)
+
+  // --- React UI로 넘기는 값 (DOM을 직접 만지지 않는다) ---
+  runId: 0,           // 런이 바뀔 때마다 증가 (힌트 애니메이션 재생용 key)
+  memeText: '',       // 화면을 가리는 밈 말풍선
+  memeToken: 0,       // 같은 밈이 연속으로 나와도 애니메이션이 다시 재생되도록
+  clearInfo: null,    // { levelName, meters, runCoins, reward, unlockedNew, isLast }
+  overInfo: null,     // { meters, goal, reason, runCoins, newRecord }
 };
 
 function currentLevel() {
@@ -390,14 +192,24 @@ function playerScreenPos() {
   return project(player.x, cy, CONFIG.player.z);
 }
 
-// ===== 입력 =====
-const shopOpen = () => !shopEl.classList.contains('hidden');
 
-window.addEventListener('keydown', (e) => {
-  if (shopOpen()) {
-    if (e.code === 'Escape') closeShop();
-    return;
+function jump() {
+  if (state.phase !== 'playing' || state.paused) return;
+  if (player.onGround) {
+    player.vy = -CONFIG.player.jumpVel;
+    player.onGround = false;
   }
+}
+
+function togglePause() {
+  if (state.phase !== 'playing') return;
+  state.paused = !state.paused;
+  emit();
+}
+
+// ===== 입력 (게임 조작만 엔진이 처리, 메뉴 클릭은 React) =====
+function onKeyDown(e) {
+  if (shopIsOpen) return; // 상점이 열려 있으면 React가 처리
 
   // 홈: 좌우로 스테이지 고르고 Space/Enter로 시작
   if (state.phase === 'home') {
@@ -426,46 +238,18 @@ window.addEventListener('keydown', (e) => {
     else togglePause();
   }
   if (e.code === 'KeyR' && state.phase === 'gameover') startLevel(state.level);
-});
-window.addEventListener('keyup', (e) => {
+}
+
+function onKeyUp(e) {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.left = false;
   if (e.code === 'ArrowRight' || e.code === 'KeyD') input.right = false;
-});
+}
 
-document.addEventListener('visibilitychange', () => {
+function onVisibility() {
   if (document.hidden && state.phase === 'playing') state.paused = true;
-  syncPauseBtn();
-});
-
-pauseBtn.addEventListener('click', togglePause);
-restartBtn.addEventListener('click', () => startLevel(state.level));
-shopBtn.addEventListener('click', openShop);
-shopCloseBtn.addEventListener('click', closeShop);
-
-startBtn.addEventListener('click', () => startLevel(state.selected));
-homeShopBtn.addEventListener('click', openShop);
-homeHelpBtn.addEventListener('click', () => homeHelpEl.classList.toggle('hidden'));
-overHomeBtn.addEventListener('click', showHome);
-clearHomeBtn.addEventListener('click', showHome);
-nextBtn.addEventListener('click', goNextLevel);
-
-function jump() {
-  if (state.phase !== 'playing' || state.paused) return;
-  if (player.onGround) {
-    player.vy = -CONFIG.player.jumpVel;
-    player.onGround = false;
-  }
+  emit();
 }
 
-function togglePause() {
-  if (state.phase !== 'playing') return;
-  state.paused = !state.paused;
-  syncPauseBtn();
-}
-
-function syncPauseBtn() {
-  pauseBtn.innerHTML = state.paused ? ICON_PLAY : ICON_MOON;
-}
 
 // ===== 런 초기화 / 화면 전환 =====
 function resetRun(level) {
@@ -501,16 +285,11 @@ function resetRun(level) {
   input.left = false;
   input.right = false;
 
-  gameOverEl.classList.add('hidden');
-  clearEl.classList.add('hidden');
-  newRecordEl.classList.add('hidden');
-  clearUnlockEl.classList.add('hidden');
-  memeCoverEl.classList.add('hidden');
-  bestEl.textContent = `BEST ${bestMeters} m`;
-  levelNameEl.textContent = `${level}. ${lv.name}`;
-  progressFillEl.style.width = '0%';
-  syncPauseBtn();
-  syncCoinHud();
+  state.clearInfo = null;
+  state.overInfo = null;
+  state.memeText = '';
+  state.runId++;
+  emit();
 }
 
 function startLevel(level) {
@@ -518,73 +297,22 @@ function startLevel(level) {
   if (level > wallet.unlocked) return; // 잠긴 스테이지
   resetRun(level);
   state.phase = 'playing';
-  homeEl.classList.add('hidden');
-  hudEl.classList.remove('hidden');
-
-  // 힌트 애니메이션 다시 재생
-  hintEl.classList.remove('hidden');
-  hintEl.style.animation = 'none';
-  void hintEl.offsetWidth;
-  hintEl.style.animation = '';
+  emit();
 }
 
 function showHome() {
   resetRun(state.selected);
   state.phase = 'home';
-  homeEl.classList.remove('hidden');
-  hudEl.classList.add('hidden');
-  hintEl.classList.add('hidden');
-  homeHelpEl.classList.add('hidden');
-  refreshHome();
+  emit();
 }
 
 function selectLevel(level) {
   level = Math.min(Math.max(level, 1), LEVELS.length);
   if (level > wallet.unlocked) return;
   state.selected = level;
-  buildLevelSelect();
+  emit();
 }
 
-function buildLevelSelect() {
-  levelSelectEl.innerHTML = '';
-  LEVELS.forEach((lv, i) => {
-    const n = i + 1;
-    const locked = n > wallet.unlocked;
-    const card = document.createElement('div');
-    card.className = 'level-card'
-      + (locked ? ' locked' : '')
-      + (state.selected === n && !locked ? ' selected' : '');
-    card.innerHTML = `
-      <div class="lv">${locked ? '🔒' : n}</div>
-      <div class="nm">${lv.name}</div>
-      <div class="goal">${lv.goal} m</div>
-      ${wallet.cleared.includes(n) ? '<div class="cleared">🌙</div>' : ''}
-    `;
-    if (!locked) {
-      card.addEventListener('click', () => selectLevel(n));
-      card.addEventListener('dblclick', () => startLevel(n));
-    }
-    levelSelectEl.appendChild(card);
-  });
-}
-
-function refreshHome() {
-  homeBestEl.textContent = `${bestMeters} m`;
-  homeCoinsEl.textContent = wallet.coins;
-
-  const skin = skinByKey(wallet.equipped);
-  homeSkinNameEl.textContent = skin.name;
-  const g = homeSkinEl.getContext('2d');
-  g.clearRect(0, 0, homeSkinEl.width, homeSkinEl.height);
-  g.save();
-  g.translate(homeSkinEl.width / 2, homeSkinEl.height - 22);
-  g.scale(1.95, 1.95);
-  drawRunnerFront(g, skin);
-  g.restore();
-
-  if (state.selected > wallet.unlocked) state.selected = wallet.unlocked;
-  buildLevelSelect();
-}
 
 // ===== 사망 / 클리어 =====
 function die(cause) {
@@ -607,7 +335,7 @@ function reachBed() {
   state.paused = false;
   player.vy = -CONFIG.player.jumpVel * 0.55; // 침대로 폴짝
   player.onGround = false;
-  memeCoverEl.classList.add('hidden');
+  state.memeText = '';
 
   const lv = currentLevel();
   const meters = Math.floor(state.distance / CONFIG.score.unitsPerMeter);
@@ -619,13 +347,18 @@ function reachBed() {
   const unlockedNew = state.level === wallet.unlocked && wallet.unlocked < LEVELS.length;
   if (unlockedNew) wallet.unlocked = state.level + 1;
   saveWallet();
-  syncCoinHud();
 
-  clearLevelEl.textContent = `${state.level}. ${lv.name}`;
-  clearScoreEl.textContent = `${meters} m 완주`;
-  clearCoinsEl.textContent = `⭐ +${state.runCoins} · 클리어 보상 +${lv.reward}`;
-  clearUnlockEl.classList.toggle('hidden', !unlockedNew);
-  nextBtn.classList.toggle('hidden', state.level >= LEVELS.length);
+  // 클리어 패널에 띄울 값 — 연출(1.9초)이 끝나면 React가 보여준다
+  state.clearInfo = {
+    levelName: `${state.level}. ${lv.name}`,
+    meters,
+    runCoins: state.runCoins,
+    reward: lv.reward,
+    unlockedNew,
+    isLast: state.level >= LEVELS.length,
+    ready: false,
+  };
+  emit();
 }
 
 function goNextLevel() {
@@ -634,6 +367,7 @@ function goNextLevel() {
   state.selected = next;
   startLevel(next);
 }
+
 
 // ===== 중력 전환 (벽 타기) =====
 function shiftGravity(dir) {
@@ -826,17 +560,16 @@ function updateObstacles() {
   }
 }
 
+
 function hitMeme(o) {
   state.slowT = 1.3;
   state.coverT = 1.0;
   state.speed = Math.max(currentLevel().base * 0.6, state.speed * 0.55);
   if (o.meme.text === '영혼 없는 춤…') state.stunT = 0.5; // 따라 추느라 조작 잠김
 
-  memeCoverEl.textContent = o.meme.text;
-  memeCoverEl.classList.remove('hidden');
-  memeCoverEl.style.animation = 'none';
-  void memeCoverEl.offsetWidth;
-  memeCoverEl.style.animation = '';
+  state.memeText = o.meme.text;
+  state.memeToken++;   // 같은 문구라도 애니메이션이 다시 재생되도록
+  emit();
 
   const p = playerScreenPos();
   spawnBurst(p.x, p.y, o.meme.rgb, 20, 260);
@@ -874,7 +607,6 @@ function collectCoins() {
       wallet.coins++;
       state.runCoins++;
       saveWallet();
-      syncCoinHud();
       const p = project(...faceRot(c.x, CONFIG.tunnel.size / 2 - CONFIG.coin.hover, (c.face - state.surface + 4) % 4), c.z - state.distance);
       spawnBurst(p.x, p.y, [255, 226, 138], 8, 150);
     }
@@ -896,6 +628,7 @@ function checkFall() {
     }
   }
 }
+
 
 // ===== 클리어 연출 (침대에 뛰어들어 잠들기) =====
 function updateClear(dt) {
@@ -941,7 +674,10 @@ function updateClear(dt) {
 
   updateParticles(dt);
 
-  if (state.clearT > 1.9) clearEl.classList.remove('hidden');
+  // 잠드는 연출이 끝나면 React가 클리어 패널을 띄운다
+  if (state.clearT > 1.9 && state.clearInfo && !state.clearInfo.ready) {
+    state.clearInfo = { ...state.clearInfo, ready: true };
+  }
 }
 
 // ===== 업데이트 =====
@@ -952,7 +688,7 @@ function update(dt) {
   // 밈 말풍선이 화면을 가리는 시간
   if (state.coverT > 0) {
     state.coverT -= dt;
-    if (state.coverT <= 0) memeCoverEl.classList.add('hidden');
+    if (state.coverT <= 0) state.memeText = '';
   }
 
   if (state.phase === 'home') {
@@ -1048,10 +784,7 @@ function update(dt) {
     collectCoins();
     checkFall();
     checkObstacles();
-
-    scoreEl.textContent = `${Math.floor(state.distance / CONFIG.score.unitsPerMeter)} m`;
-    const p = Math.min(1, (state.distance + CONFIG.player.z) / state.goalZ) * 100;
-    progressFillEl.style.width = `${p.toFixed(1)}%`;
+    // 점수·진행도는 스냅샷(snapshot)에서 계산해 React로 넘어간다
   } else if (state.phase === 'dying') {
     player.vy += CONFIG.player.gravity * dt;
     player.height -= player.vy * dt;
@@ -1060,18 +793,20 @@ function update(dt) {
       state.phase = 'gameover';
       const lv = currentLevel();
       const meters = Math.floor(state.distance / CONFIG.score.unitsPerMeter);
-      finalScoreEl.textContent = `${meters} m / ${lv.goal} m`;
-      failReasonEl.textContent = state.deathBy === 'hole'
-        ? '구멍에 빠져 잠이 확 깼어요'
-        : `${state.deathBy}에게 붙잡혔어요`;
-      runCoinsEl.textContent = `⭐ +${state.runCoins}`;
-      if (meters > bestMeters) {
-        saveBest(meters);
-        newRecordEl.classList.remove('hidden');
-      }
+      const newRecord = meters > bestMeters;
+      if (newRecord) saveBest(meters);
       saveWallet();
-      memeCoverEl.classList.add('hidden');
-      gameOverEl.classList.remove('hidden');
+
+      state.memeText = '';
+      state.overInfo = {
+        meters,
+        goal: lv.goal,
+        reason: state.deathBy === 'hole'
+          ? '구멍에 빠져 잠이 확 깼어요'
+          : `${state.deathBy}에게 붙잡혔어요`,
+        runCoins: state.runCoins,
+        newRecord,
+      };
     }
   }
 
@@ -1107,6 +842,7 @@ function updateRoll(dt) {
   const k = easeInOutCubic(rollAnim.t / rollAnim.dur);
   state.roll = rollAnim.from * (1 - k);
 }
+
 
 // ===== 렌더링: 배경/터널 =====
 function quad(a, b, c, d, fill) {
@@ -1239,17 +975,7 @@ function drawTunnel() {
 }
 
 // ===== 별사탕 코인 =====
-function drawStarShape(g, cx, cy, R) {
-  g.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? R : R * 0.46;
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    const x = cx + Math.cos(a) * r;
-    const y = cy + Math.sin(a) * r;
-    if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
-  }
-  g.closePath();
-}
+
 
 function drawCoins() {
   const T = CONFIG.tunnel;
@@ -1290,7 +1016,7 @@ function drawBed() {
   const half = T.size / 2;
   const near = CONFIG.camera.nearZ;
 
-  const z0 = state.goalZ - state.distance - B.len * 0.4;
+  const z0 = state.goalZ - state.distance - B.len * 0.12;
   const z1 = z0 + B.len;
   if (z1 <= near || z0 >= T.depth) return;
   const zn = Math.max(z0, near);
@@ -1424,69 +1150,107 @@ function drawObstacleShape(g, o, t) {
   }
 
   // 사람형 방해꾼 공통 (아빠 · 조XX · 김XX)
+  // 친구 시안 톤: 라벤더/퍼플 상의 · 회색 바지 · 갈색 어깨머리 · 졸린 얼굴
   const cfg = {
-    dad: { body: '#8FA0C8', head: PAL.skin, hair: '#3A3F63', H: 150 },
-    jo:  { body: '#FFB5C0', head: PAL.skin, hair: '#4A3A55', H: 132 },
-    kim: { body: '#8FD1BA', head: PAL.skin, hair: '#5A3E2B', H: 136 },
+    dad: { body: '#8FA0C8', legs: '#5A5F92', head: PAL.skin, hair: '#3A3F63', H: 150 },
+    jo:  { body: '#AEA2DA', legs: '#8C8AA0', head: PAL.skin, hair: '#5B4636', H: 144 },
+    kim: { body: '#9E8FCB', legs: '#8C8AA0', head: PAL.skin, hair: '#5B4636', H: 148 },
   }[o.type];
-  const sway = o.type === 'kim' ? Math.sin(t * 6 + o.seed) * 0.12 : 0;
+  const friend = o.type !== 'dad';
+  const sway = o.type === 'kim' ? Math.sin(t * 6 + o.seed) * 0.1 : 0;
 
   g.save();
   g.rotate(sway);
 
-  // 다리
-  for (const s of [-1, 1]) { rr(g, s * 4 + (s > 0 ? 0 : -11), -34, 11, 34, 4); outlined(g, '#4A4E7A'); }
-  // 몸통
-  rr(g, -20, -cfg.H + 40, 40, cfg.H - 74, 12);
+  // 다리 (슬림한 바지)
+  for (const s of [-1, 1]) { rr(g, s * 3 + (s > 0 ? 0 : -10), -36, 10, 38, 4); outlined(g, cfg.legs); }
+  // 몸통 (상의)
+  rr(g, -19, -cfg.H + 42, 38, cfg.H - 78, 11);
   outlined(g, cfg.body);
 
   if (o.type === 'dad') {
     // 팔짱
     rr(g, -22, -cfg.H + 62, 44, 12, 6); outlined(g, cfg.body);
   } else if (o.type === 'jo') {
-    // 스마트폰 든 손
-    rr(g, 16, -cfg.H + 52, 9, 26, 4); outlined(g, cfg.body);
-    rr(g, 20, -cfg.H + 46, 13, 20, 3); outlined(g, '#2B2D5C');
-    g.fillStyle = '#9FD8FF'; g.fillRect(22, -cfg.H + 49, 9, 14);
+    // 왼팔은 내리고, 오른손은 폰을 얼굴 앞으로 ("자니?")
+    rr(g, -23, -cfg.H + 52, 9, 30, 4); outlined(g, cfg.body);
+    g.save();
+    g.translate(19, -cfg.H + 40);
+    rr(g, -5, 0, 10, 30, 4); outlined(g, cfg.body);          // 세운 팔뚝
+    rr(g, -9, -18, 18, 24, 3); outlined(g, PAL.navy);        // 스마트폰
+    g.fillStyle = '#9FD8FF'; g.fillRect(-6, -15, 12, 18);
+    g.restore();
   } else {
-    // 김XX: 양손 흔들기 (게임하자!)
+    // 김XX: 두 손을 얼굴 옆으로 (안절부절 "한 판만!")
     for (const s of [-1, 1]) {
-      const a = Math.sin(t * 8 + o.seed + (s > 0 ? 0 : Math.PI)) * 0.5;
+      const a = Math.sin(t * 7 + o.seed + (s > 0 ? 0 : Math.PI)) * 0.12;
       g.save();
-      g.translate(s * 20, -cfg.H + 54);
-      g.rotate(s * (0.5 + a));
-      rr(g, -5, -24, 10, 26, 5); outlined(g, cfg.body);
+      g.translate(s * 16, -cfg.H + 50);
+      g.rotate(s * (0.8 + a));
+      rr(g, -5, -28, 10, 30, 5); outlined(g, cfg.body);      // 팔
+      g.beginPath(); g.arc(0, -30, 6, 0, Math.PI * 2); outlined(g, cfg.head); // 손
       g.restore();
     }
   }
 
   // 머리
   const hy = -cfg.H + 22;
-  g.beginPath(); g.arc(0, hy, 20, 0, Math.PI * 2);
+  g.beginPath(); g.arc(0, hy, 19, 0, Math.PI * 2);
   outlined(g, cfg.head);
-  g.beginPath(); g.arc(0, hy - 4, 20, Math.PI * 1.05, Math.PI * 1.95);
-  g.strokeStyle = cfg.hair; g.lineWidth = 9; g.stroke();
+
+  // 어깨까지 내려오는 머리 (친구) — 갈색 웨이브
+  if (friend) {
+    g.fillStyle = cfg.hair;
+    for (const s of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(s * 16, hy - 8);
+      g.quadraticCurveTo(s * 25, hy + 6, s * 20, hy + 30);
+      g.quadraticCurveTo(s * 12, hy + 18, s * 11, hy - 2);
+      g.closePath(); g.fill();
+    }
+  }
+  // 정수리 앞머리
+  g.beginPath(); g.arc(0, hy - 3, 19, Math.PI * 1.02, Math.PI * 1.98);
+  g.strokeStyle = cfg.hair; g.lineWidth = friend ? 8 : 9; g.stroke();
   g.lineWidth = 2.2;
 
   if (o.type === 'dad') {
-    // 안경
+    // 안경 + 못마땅한 입
     for (const s of [-1, 1]) {
       g.beginPath(); g.arc(s * 8, hy + 2, 6, 0, Math.PI * 2);
       g.strokeStyle = PAL.navy; g.lineWidth = 2; g.stroke();
     }
     g.beginPath(); g.moveTo(-2, hy + 2); g.lineTo(2, hy + 2); g.stroke();
+    g.beginPath(); g.moveTo(-6, hy + 11); g.quadraticCurveTo(0, hy + 9, 6, hy + 11); g.stroke();
   } else if (o.type === 'kim') {
-    // 헤드셋
-    g.beginPath(); g.arc(0, hy - 2, 22, Math.PI * 1.1, Math.PI * 1.9);
-    g.strokeStyle = PAL.navy; g.lineWidth = 4; g.stroke();
-    for (const s of [-1, 1]) { rr(g, s * 22 - 5, hy - 6, 10, 14, 4); outlined(g, '#2B2D5C'); }
+    // 졸린 눈 + 걱정스런 입 + 헤드셋
+    g.strokeStyle = PAL.navy; g.lineWidth = 2; g.lineCap = 'round';
+    for (const s of [-1, 1]) { g.beginPath(); g.arc(s * 7, hy + 1, 4, Math.PI * 0.12, Math.PI * 0.88); g.stroke(); }
+    g.beginPath(); g.ellipse(0, hy + 10, 3, 2.6, 0, 0, Math.PI * 2); g.fillStyle = PAL.navy; g.fill();
+    g.beginPath(); g.arc(0, hy - 2, 23, Math.PI * 1.08, Math.PI * 1.92);
+    g.strokeStyle = PAL.navy; g.lineWidth = 5; g.stroke();
+    for (const s of [-1, 1]) { rr(g, s * 22 - 6, hy - 7, 12, 17, 5); outlined(g, '#3A3652'); }
+    g.lineWidth = 2.2;
   } else {
-    // 조XX: 졸린 눈웃음
+    // 조XX: 졸린 반쯤 감긴 눈 + 다크서클 + 옅은 미소
+    g.strokeStyle = PAL.navy; g.lineWidth = 2; g.lineCap = 'round';
     for (const s of [-1, 1]) {
-      g.beginPath(); g.arc(s * 7, hy + 2, 4, Math.PI, 0);
-      g.strokeStyle = PAL.navy; g.lineWidth = 2; g.stroke();
+      g.beginPath(); g.moveTo(s * 7 - 3.2, hy + 1); g.quadraticCurveTo(s * 7, hy + 3.4, s * 7 + 3.2, hy + 1); g.stroke();
     }
+    g.strokeStyle = 'rgba(43,45,92,0.32)'; g.lineWidth = 1.3;
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.moveTo(s * 7 - 2.6, hy + 4.6); g.quadraticCurveTo(s * 7, hy + 6, s * 7 + 2.6, hy + 4.6); g.stroke();
+    }
+    g.strokeStyle = PAL.navy; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-3, hy + 10); g.quadraticCurveTo(0, hy + 12, 3, hy + 10); g.stroke();
   }
+
+  // 볼터치 (친구)
+  if (friend) {
+    g.fillStyle = 'rgba(255,150,170,0.45)';
+    for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 11, hy + 7, 3.6, 2.3, 0, 0, Math.PI * 2); g.fill(); }
+  }
+
   g.restore();
 
   const say = { dad: '아직 안 자?', jo: '자니?', kim: '한 판만!' }[o.type];
@@ -1522,287 +1286,6 @@ function drawObstacles() {
   }
 }
 
-// ===== 캐릭터 렌더러 (벡터) =====
-// 좌표계: 발바닥 중앙 = (0,0), 위가 -y, 단위 = 월드 단위
-function rr(g, x, y, w, h, r) {
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
-}
-
-function outlined(g, fill) {
-  g.fillStyle = fill;
-  g.fill();
-  g.strokeStyle = PAL.navy;
-  g.stroke();
-}
-
-// 후드 장식 (뒷모습/앞모습 공용 — 머리 중심 hx,hy 반지름 hr)
-function drawHoodFeatures(g, skin, hx, hy, hr, front, t) {
-  const k = skin.key;
-  const H = skin.hood, I = skin.inner, A = skin.accent;
-  g.lineWidth = 2;
-
-  if (k === 'base') {
-    // 부스스 묶은 갈색 머리 (후드 내림)
-    g.beginPath(); g.arc(hx, hy, hr, Math.PI, 0); g.closePath(); outlined(g, PAL.hair);
-    g.beginPath(); g.arc(hx + hr * 0.15, hy - hr - 3, 5.5, 0, Math.PI * 2); outlined(g, PAL.hair); // 똥머리
-    g.beginPath(); g.moveTo(hx - hr * 0.7, hy - hr * 0.55); g.quadraticCurveTo(hx - hr - 4, hy - hr * 0.9, hx - hr - 2, hy - hr * 0.2);
-    g.strokeStyle = PAL.hair; g.lineWidth = 2.4; g.stroke(); // 잔머리
-  } else if (k === 'bear') {
-    for (const s of [-1, 1]) {
-      g.beginPath(); g.arc(hx + s * hr * 0.68, hy - hr * 0.72, hr * 0.34, 0, Math.PI * 2); outlined(g, H);
-      g.beginPath(); g.arc(hx + s * hr * 0.68, hy - hr * 0.72, hr * 0.17, 0, Math.PI * 2); g.fillStyle = I; g.fill();
-    }
-    if (front) { // 흰 주둥이 + 검은 코
-      g.beginPath(); g.ellipse(hx, hy + hr * 0.42, hr * 0.34, hr * 0.26, 0, 0, Math.PI * 2); outlined(g, I);
-      g.beginPath(); g.ellipse(hx, hy + hr * 0.32, 3, 2.2, 0, 0, Math.PI * 2); g.fillStyle = PAL.navy; g.fill();
-    }
-  } else if (k === 'rabbit') {
-    for (const s of [-1, 1]) { // 달릴 때 뒤로 팔랑이는 긴 귀
-      const sway = front ? 0 : Math.sin(t * 10 + s) * 0.12;
-      g.save(); g.translate(hx + s * hr * 0.4, hy - hr * 0.8); g.rotate(s * 0.22 + sway);
-      g.beginPath(); g.ellipse(0, -hr * 0.62, hr * 0.24, hr * 0.72, 0, 0, Math.PI * 2); outlined(g, H);
-      g.beginPath(); g.ellipse(0, -hr * 0.62, hr * 0.11, hr * 0.5, 0, 0, Math.PI * 2); g.fillStyle = I; g.fill();
-      g.restore();
-    }
-    if (front) { g.beginPath(); g.ellipse(hx, hy + hr * 0.34, 3, 2.4, 0, 0, Math.PI * 2); g.fillStyle = I; g.fill(); }
-  } else if (k === 'cat') {
-    for (const s of [-1, 1]) { // 세모 귀
-      g.beginPath();
-      g.moveTo(hx + s * hr * 0.32, hy - hr * 0.82);
-      g.lineTo(hx + s * hr * 1.02, hy - hr * 1.28);
-      g.lineTo(hx + s * hr * 0.95, hy - hr * 0.42);
-      g.closePath(); outlined(g, H);
-    }
-    // 줄무늬
-    g.strokeStyle = I; g.lineWidth = 2.6;
-    for (const o of [-hr * 0.35, 0, hr * 0.35]) {
-      g.beginPath(); g.moveTo(hx + o - 3, hy - hr * 0.75); g.lineTo(hx + o + 3, hy - hr * 0.4); g.stroke();
-    }
-  } else if (k === 'dog') {
-    for (const s of [-1, 1]) { // 늘어진 갈색 귀
-      g.beginPath(); g.ellipse(hx + s * hr * 0.88, hy - hr * 0.05, hr * 0.26, hr * 0.6, s * 0.25, 0, Math.PI * 2); outlined(g, I);
-    }
-    if (front) { // 혀 내민 입
-      g.beginPath(); g.ellipse(hx, hy + hr * 0.5, 3.4, 4.4, 0, 0, Math.PI * 2); g.fillStyle = PAL.pink; g.fill();
-    }
-  } else if (k === 'chick') {
-    // 병아리 볏 (깃털 3개)
-    for (const o of [-0.28, 0, 0.28]) {
-      g.beginPath(); g.ellipse(hx + o * hr, hy - hr * 0.95, 3.2, 7, o * 0.8, 0, Math.PI * 2); outlined(g, I);
-    }
-    if (front) { // 작은 주황 부리
-      g.beginPath(); g.moveTo(hx - 4, hy + hr * 0.3); g.lineTo(hx + 4, hy + hr * 0.3); g.lineTo(hx, hy + hr * 0.48); g.closePath(); outlined(g, I);
-    }
-  } else if (k === 'pony') {
-    for (const s of [-1, 1]) {
-      g.beginPath(); g.ellipse(hx + s * hr * 0.6, hy - hr * 0.78, hr * 0.18, hr * 0.32, s * 0.3, 0, Math.PI * 2); outlined(g, H);
-    }
-    // 갈색 갈기 (정수리→뒤통수)
-    g.beginPath(); g.ellipse(hx, hy - hr * 0.62, hr * 0.28, hr * 0.55, 0, 0, Math.PI * 2); outlined(g, A);
-    if (front) { g.beginPath(); g.ellipse(hx, hy + hr * 0.42, hr * 0.32, hr * 0.24, 0, 0, Math.PI * 2); outlined(g, I); }
-  } else if (k === 'penguin') {
-    // 빨간 볏 포인트
-    g.beginPath(); g.ellipse(hx, hy - hr * 0.95, 4.4, 6.2, 0, 0, Math.PI * 2); outlined(g, A);
-    if (front) {
-      g.beginPath(); g.ellipse(hx, hy + hr * 0.05, hr * 0.62, hr * 0.68, 0, 0, Math.PI * 2); g.fillStyle = I; g.fill(); // 흰 얼굴판
-      g.beginPath(); g.moveTo(hx - 4.4, hy + hr * 0.3); g.lineTo(hx + 4.4, hy + hr * 0.3); g.lineTo(hx, hy + hr * 0.5); g.closePath(); outlined(g, '#FF9F45');
-    } else {
-      for (const s of [-1, 1]) { g.beginPath(); g.arc(hx + s * hr * 0.72, hy + hr * 0.1, hr * 0.2, 0, Math.PI * 2); g.fillStyle = I; g.fill(); }
-    }
-  } else if (k === 'shark') {
-    // 등지느러미
-    g.beginPath();
-    g.moveTo(hx - 2, hy - hr * 0.7);
-    g.quadraticCurveTo(hx + 2, hy - hr * 1.6, hx + hr * 0.55, hy - hr * 1.28);
-    g.quadraticCurveTo(hx + hr * 0.3, hy - hr * 0.85, hx + hr * 0.35, hy - hr * 0.55);
-    g.closePath(); outlined(g, A);
-    // 후드 가장자리 흰 이빨
-    const teethY = front ? hy + hr * 0.55 : hy + hr * 0.62;
-    g.beginPath();
-    for (let i = -2; i <= 2; i++) {
-      const tx = hx + i * hr * 0.3;
-      g.moveTo(tx - hr * 0.14, teethY);
-      g.lineTo(tx, teethY - hr * 0.2);
-      g.lineTo(tx + hr * 0.14, teethY);
-    }
-    g.fillStyle = I; g.fill(); g.strokeStyle = PAL.navy; g.lineWidth = 1.4; g.stroke();
-  } else if (k === 'walrus') {
-    if (front) {
-      g.beginPath(); g.ellipse(hx, hy + hr * 0.36, 4.4, 3.4, 0, 0, Math.PI * 2); outlined(g, A); // 빨간 코
-    }
-    for (const s of [-1, 1]) { // 상아 2개
-      g.beginPath(); g.ellipse(hx + s * hr * 0.34, hy + hr * (front ? 0.78 : 0.7), 2.6, hr * 0.34, s * 0.12, 0, Math.PI * 2); outlined(g, I);
-    }
-  } else if (k === 'dino') {
-    // 정수리 골판
-    for (let i = -1; i <= 1; i++) {
-      g.beginPath();
-      g.moveTo(hx + i * hr * 0.5 - hr * 0.2, hy - hr * 0.72);
-      g.lineTo(hx + i * hr * 0.5, hy - hr * 1.22 + Math.abs(i) * 4);
-      g.lineTo(hx + i * hr * 0.5 + hr * 0.2, hy - hr * 0.68);
-      g.closePath(); outlined(g, I);
-    }
-    if (front) { // 후드 챙 흰 이빨
-      g.beginPath();
-      for (let i = -2; i <= 2; i++) {
-        const tx = hx + i * hr * 0.3;
-        g.moveTo(tx - hr * 0.13, hy - hr * 0.28);
-        g.lineTo(tx, hy - hr * 0.06);
-        g.lineTo(tx + hr * 0.13, hy - hr * 0.28);
-      }
-      g.fillStyle = '#FFF7EA'; g.fill(); g.strokeStyle = PAL.navy; g.lineWidth = 1.4; g.stroke();
-    }
-  } else if (k === 'giraffe') {
-    for (const s of [-1, 1]) { // 뿔 2개 (오시콘)
-      g.beginPath(); g.moveTo(hx + s * hr * 0.35, hy - hr * 0.8); g.lineTo(hx + s * hr * 0.42, hy - hr * 1.25);
-      g.strokeStyle = PAL.navy; g.lineWidth = 2.6; g.stroke();
-      g.beginPath(); g.arc(hx + s * hr * 0.43, hy - hr * 1.3, 3.4, 0, Math.PI * 2); outlined(g, A);
-    }
-    // 주황 얼룩
-    g.fillStyle = I;
-    g.beginPath(); g.ellipse(hx - hr * 0.45, hy - hr * 0.15, 4.5, 3.6, 0.4, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(hx + hr * 0.5, hy - hr * 0.4, 3.8, 3, -0.3, 0, Math.PI * 2); g.fill();
-  } else if (k === 'unicorn') {
-    // 금색 뿔
-    g.beginPath();
-    g.moveTo(hx - 4, hy - hr * 0.78);
-    g.lineTo(hx + 4, hy - hr * 0.78);
-    g.lineTo(hx, hy - hr * 1.5);
-    g.closePath(); outlined(g, I);
-    // 무지개 갈기
-    const RB = ['#FF9AA2', '#FFD782', '#9FE3B4', '#9ED8F0', '#C3AEF0'];
-    for (let i = 0; i < 5; i++) {
-      g.beginPath();
-      g.arc(hx - hr * 0.15, hy - hr * 0.1, hr * (0.98 - i * 0.1), Math.PI * 0.62, Math.PI * 1.06);
-      g.strokeStyle = RB[i]; g.lineWidth = 3; g.stroke();
-    }
-  }
-}
-
-// 뒷모습 러너 (게임 내) — g는 이미 발 중심으로 translate/rotate/scale 된 상태
-function drawRunnerBack(g, skin, pose, phase, t) {
-  const body = skin.key === 'dino' ? '#3A3F63' : skin.hood; // 공룡: 네이비 몸통
-  g.lineWidth = 2.2;
-  g.lineJoin = 'round';
-
-  // 상하 반동 (한 걸음마다 1회) + 점프 시엔 반동 없음
-  const bob = pose === 'run' ? Math.sin(phase * 2 - Math.PI / 2) * 1.6 : 0;
-
-  // 꼬리 (뒷모습에서 보이는 스킨만)
-  if (['cat', 'dino', 'pony', 'unicorn'].includes(skin.key)) {
-    const sway = Math.sin(t * 6) * 4;
-    g.beginPath();
-    g.moveTo(6, -10 + bob);
-    g.quadraticCurveTo(18 + sway, -6, 16 + sway, 6);
-    g.strokeStyle = PAL.navy; g.lineWidth = 7.5; g.stroke();
-    g.strokeStyle = skin.key === 'unicorn' ? '#C3AEF0' : skin.hood; g.lineWidth = 4.5; g.stroke();
-    g.lineWidth = 2.2;
-  }
-
-  // 다리 (달릴 땐 좌우 교대로 매끄럽게 순환, 점프 땐 웅크림)
-  for (const s of [-1, 1]) {
-    const a = phase + (s > 0 ? 0 : Math.PI);
-    let lift = 0, swing = 0;
-    if (pose === 'run') {
-      lift = (Math.sin(a) * 0.5 + 0.5) * 8;      // 0↔8 사이를 끊김 없이 오감
-      swing = Math.cos(a) * 3.2;                  // 앞뒤로 뻗기
-    } else if (pose === 'jumpRise' || pose === 'jumpPeak') {
-      lift = 8; swing = s * 1.5;
-    } else if (pose === 'jumpFall') {
-      lift = 3; swing = -s * 1.5;
-    }
-    rr(g, s * 2 + (s > 0 ? 0 : -9) + swing, -13 - lift + bob, 9, 13, 4);
-    outlined(g, body);
-    if (lift > 3) { // 들린 발바닥 (핑크 발싸개)
-      g.beginPath(); g.ellipse(s * 6.5 + swing, -1.5 - lift + bob + 12, 4, 2.4, 0, 0, Math.PI * 2);
-      g.fillStyle = PAL.pink; g.fill();
-    }
-  }
-
-  // 몸통 (키구루미)
-  rr(g, -12, -33 + bob, 24, 23, 8);
-  outlined(g, body);
-  // 등 재봉선
-  g.beginPath(); g.moveTo(0, -31 + bob); g.lineTo(0, -13 + bob);
-  g.strokeStyle = 'rgba(43,45,92,0.25)'; g.lineWidth = 1.6; g.stroke();
-  g.lineWidth = 2.2;
-
-  // 팔 (어깨를 축으로 회전 — 다리와 반대 위상)
-  for (const s of [-1, 1]) {
-    const a = phase + (s > 0 ? Math.PI : 0);
-    const rot = pose === 'run' ? Math.sin(a) * 0.55 : (pose.startsWith('jump') ? -0.9 * s : 0);
-    g.save();
-    g.translate(s * 12, -29 + bob);
-    g.rotate(rot);
-    rr(g, s > 0 ? 0 : -7, -1, 7, 14, 3.5);
-    outlined(g, body);
-    g.restore();
-  }
-
-  // 머리 (후드)
-  const hy = -46 + bob;
-  g.beginPath(); g.arc(0, hy, 14, 0, Math.PI * 2);
-  outlined(g, skin.key === 'base' ? PAL.skin : skin.hood);
-
-  drawHoodFeatures(g, skin, 0, hy, 14, false, t);
-}
-
-// 앞모습 (상점 썸네일) — 졸린 지영 얼굴 보임
-function drawRunnerFront(g, skin) {
-  const body = skin.key === 'dino' ? '#3A3F63' : skin.hood;
-  g.lineWidth = 2.2;
-  g.lineJoin = 'round';
-
-  // 다리
-  for (const s of [-1, 1]) {
-    rr(g, s * 2 + (s > 0 ? 0 : -9), -13, 9, 13, 4);
-    outlined(g, body);
-  }
-  // 몸통 + 지퍼
-  rr(g, -12, -33, 24, 23, 8);
-  outlined(g, body);
-  g.beginPath(); g.moveTo(0, -31); g.lineTo(0, -13);
-  g.strokeStyle = 'rgba(43,45,92,0.4)'; g.lineWidth = 1.8; g.stroke();
-  g.lineWidth = 2.2;
-  // 팔
-  for (const s of [-1, 1]) {
-    rr(g, s * 12 + (s > 0 ? 0 : -7), -30, 7, 14, 3.5);
-    outlined(g, body);
-  }
-
-  // 머리: 후드 링 + 얼굴
-  const hy = -46;
-  g.beginPath(); g.arc(0, hy, 14, 0, Math.PI * 2);
-  outlined(g, skin.key === 'base' ? PAL.hair : skin.hood);
-  g.beginPath(); g.arc(0, hy + 1, 10.5, 0, Math.PI * 2);
-  g.fillStyle = PAL.skin; g.fill();
-
-  if (skin.key === 'base') {
-    // 앞머리
-    g.beginPath(); g.arc(0, hy - 2, 10.5, Math.PI * 1.05, Math.PI * 1.95); g.lineTo(0, hy - 6);
-    g.fillStyle = PAL.hair; g.fill();
-  }
-
-  // 졸린 얼굴: 반쯤 감긴 눈 + 다크서클 + 볼터치 + 입
-  g.strokeStyle = PAL.navy; g.lineWidth = 1.8; g.lineCap = 'round';
-  for (const s of [-1, 1]) {
-    g.beginPath(); g.moveTo(s * 6.4 - 2.4, hy + 1.5); g.quadraticCurveTo(s * 6.4, hy + 3.6, s * 6.4 + 2.4, hy + 1.5); g.stroke();
-    g.beginPath(); g.moveTo(s * 6.4 - 1.8, hy + 5.2); g.quadraticCurveTo(s * 6.4, hy + 6.4, s * 6.4 + 1.8, hy + 5.2);
-    g.strokeStyle = 'rgba(43,45,92,0.28)'; g.lineWidth = 1.3; g.stroke();
-    g.strokeStyle = PAL.navy; g.lineWidth = 1.8;
-    g.beginPath(); g.ellipse(s * 7.4, hy + 7.6, 2.6, 1.5, 0, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,181,192,0.75)'; g.fill();
-  }
-  g.beginPath(); g.moveTo(-1.6, hy + 8.4); g.quadraticCurveTo(0, hy + 9.6, 1.6, hy + 8.4); g.stroke();
-
-  drawHoodFeatures(g, skin, 0, hy, 14, true, 0);
-}
 
 // ===== 플레이어 렌더링 (스프라이트 시트 우선, 없으면 벡터) =====
 function currentAnim() {
@@ -1858,7 +1341,7 @@ function drawPlayer() {
   ctx.scale(feet.s * sx, feet.s * sy);
 
   const sheet = sprites[skin.key];
-  const J = MANIFEST.jiyoung;
+  const J = getManifest().jiyoung;
   if (sleeping && !(sheet && sheet.ok && J.anims)) {
     // 벡터 모드: 앞모습(졸린 얼굴)으로 누운 포즈 + 숨쉬기
     ctx.save();
@@ -1928,115 +1411,42 @@ function render() {
 
   ctx.restore();
 
-  if (state.paused && !shopOpen()) drawPauseOverlay();
+  if (state.paused && !shopIsOpen) drawPauseOverlay();
 }
 
-// ===== 상점 =====
-function lighten(hex, w) {
-  const n = parseInt(hex.slice(1), 16);
-  const m = (c) => Math.round(c + (255 - c) * w);
-  return `rgb(${m((n >> 16) & 255)},${m((n >> 8) & 255)},${m(n & 255)})`;
-}
 
+// ===== 상점 (React UI가 호출) =====
 let shopWasPaused = false;
 
-function openShop() {
-  shopWasPaused = state.paused;
-  if (state.phase === 'playing') state.paused = true;
-  syncPauseBtn();
-  shopEl.classList.remove('hidden');
-  buildShop();
+function setShopOpen(open) {
+  if (open) {
+    shopWasPaused = state.paused;
+    if (state.phase === 'playing') state.paused = true;
+  } else if (state.phase === 'playing' && !shopWasPaused) {
+    state.paused = false;
+  }
+  shopIsOpen = open;
+  emit();
 }
 
-function closeShop() {
-  shopEl.classList.add('hidden');
-  if (state.phase === 'playing' && !shopWasPaused) state.paused = false;
-  if (state.phase === 'home') refreshHome(); // 장착 스킨 미리보기 갱신
-  syncPauseBtn();
+function buySkin(key) {
+  const skin = skinByKey(key);
+  if (wallet.owned.includes(key)) {   // 이미 있으면 장착만
+    wallet.equipped = key;
+  } else if (wallet.coins >= skin.price) {
+    wallet.coins -= skin.price;
+    wallet.owned.push(key);
+    wallet.equipped = key;
+  } else {
+    return false;                      // 코인 부족
+  }
+  saveWallet();
+  emit();
+  return true;
 }
-
-function buildShop() {
-  shopGridEl.innerHTML = '';
-  syncCoinHud();
-  if (state.phase === 'home') refreshHome();
-  MANIFEST.skins.forEach((skin, i) => {
-    const item = document.createElement('div');
-    item.className = 'shop-item' + (wallet.equipped === skin.key ? ' equipped' : '');
-
-    const no = document.createElement('div');
-    no.className = 'no';
-    no.textContent = 'No.' + String(i + 1).padStart(2, '0');
-
-    const thumb = document.createElement('canvas');
-    thumb.width = 150; thumb.height = 150;
-    const g = thumb.getContext('2d');
-    g.fillStyle = lighten(skin.hood, 0.78);
-    g.fillRect(0, 0, 150, 150);
-    g.save();
-    g.translate(75, 128);
-    g.scale(1.55, 1.55);
-    drawRunnerFront(g, skin);
-    g.restore();
-
-    const name = document.createElement('div');
-    name.className = 'name';
-    name.textContent = skin.name;
-
-    const tag = document.createElement('div');
-    tag.className = 'tag';
-    tag.textContent = skin.tag || '';
-
-    const price = document.createElement('div');
-    const owned = wallet.owned.includes(skin.key);
-    if (wallet.equipped === skin.key) {
-      price.className = 'price equipped-label';
-      price.textContent = '장착중';
-    } else if (owned) {
-      price.className = 'price owned';
-      price.textContent = '보유중 · 장착';
-    } else {
-      price.className = 'price' + (wallet.coins < skin.price ? ' locked' : '');
-      price.innerHTML = `⭐ ${skin.price}`;
-    }
-
-    item.append(no, thumb, name, tag, price);
-    item.addEventListener('click', () => {
-      if (wallet.owned.includes(skin.key)) {
-        wallet.equipped = skin.key;
-        saveWallet();
-        buildShop();
-      } else if (wallet.coins >= skin.price) {
-        wallet.coins -= skin.price;
-        wallet.owned.push(skin.key);
-        wallet.equipped = skin.key;
-        saveWallet();
-        syncCoinHud();
-        buildShop();
-      } else {
-        item.classList.remove('denied');
-        void item.offsetWidth; // 애니메이션 재시작 트릭
-        item.classList.add('denied');
-      }
-    });
-    shopGridEl.appendChild(item);
-  });
-}
-
-// ===== 매니페스트 로드 → 초기화 =====
-fetch('manifest.json')
-  .then((r) => (r.ok ? r.json() : null))
-  .then((m) => {
-    if (m && m.jiyoung && Array.isArray(m.skins)) MANIFEST = m;
-  })
-  .catch(() => {})
-  .finally(() => {
-    loadSpriteSheets();
-    if (!MANIFEST.skins.some((s) => s.key === wallet.equipped)) wallet.equipped = 'base';
-    if (state.phase === 'home') refreshHome();
-  });
 
 // ===== 메인 루프 (deltaTime 기반, 프레임 독립적) =====
-let lastTime = performance.now();
+let lastTime = 0;
 
 function gameLoop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
@@ -2044,10 +1454,57 @@ function gameLoop(now) {
 
   if (!state.paused) update(dt);
   render();
+  emit();
 
-  requestAnimationFrame(gameLoop);
+  rafId = requestAnimationFrame(gameLoop);
 }
 
-state.selected = wallet.unlocked;
-showHome();
-requestAnimationFrame(gameLoop);
+// ===== 초기화 / 정리 (React useEffect에서 호출) =====
+function init(canvasEl, onState) {
+  canvas = canvasEl;
+  ctx = canvas.getContext('2d');
+  listener = onState;
+
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  document.addEventListener('visibilitychange', onVisibility);
+
+  initStars();
+  loadAssets().then(() => {
+    if (!getManifest().skins.some((s) => s.key === wallet.equipped)) wallet.equipped = 'base';
+    emit();
+  });
+
+  state.selected = wallet.unlocked;
+  showHome();
+
+  lastTime = performance.now();
+  rafId = requestAnimationFrame(gameLoop);
+
+  return destroy;
+}
+
+function destroy() {
+  cancelAnimationFrame(rafId);
+  window.removeEventListener('resize', resizeCanvas);
+  window.removeEventListener('keydown', onKeyDown);
+  window.removeEventListener('keyup', onKeyUp);
+  document.removeEventListener('visibilitychange', onVisibility);
+  listener = null;
+  lastSnapshot = '';
+}
+
+export {
+  init,
+  destroy,
+  startLevel,
+  showHome,
+  selectLevel,
+  goNextLevel,
+  togglePause,
+  setShopOpen,
+  buySkin,
+  LEVELS,
+};
