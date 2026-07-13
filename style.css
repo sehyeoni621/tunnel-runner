@@ -335,6 +335,373 @@ html, body {
   box-shadow: 0 2px 0 rgba(43, 45, 92, 0.55);
 }
 
+/* ===== 공통: 구름 버튼 ===== */
+#start-btn, #next-btn {
+  padding: 14px 38px;
+  font-size: 20px;
+  color: #2B2D5C;
+  background: #FFF3D6;
+  border: 3px solid #2B2D5C;
+  border-radius: 40px;
+  box-shadow: 0 5px 0 rgba(43, 45, 92, 0.55), 0 14px 30px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#start-btn:hover, #next-btn:hover { transform: translateY(-2px); }
+#start-btn:active, #next-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 rgba(43, 45, 92, 0.55);
+}
+
+button.ghost {
+  padding: 12px 24px;
+  font-size: 15px;
+  color: #EDE9FB;
+  background: rgba(43, 45, 92, 0.8);
+  border: 2px solid rgba(184, 169, 224, 0.5);
+  border-radius: 30px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+button.ghost:hover {
+  background: rgba(75, 78, 140, 0.95);
+  transform: translateY(-1px);
+}
+
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* ===== 메인 홈 화면 ===== */
+#home {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(43, 45, 92, 0.55), rgba(10, 11, 26, 0.9));
+  pointer-events: auto;
+}
+
+#home-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 28px 20px;
+}
+
+#home-title { text-align: center; }
+
+#zzz {
+  font-family: "Jua", sans-serif;
+  font-size: 20px;
+  letter-spacing: 6px;
+  color: rgba(255, 226, 138, 0.85);
+  animation: zzz-float 3s ease-in-out infinite;
+}
+
+@keyframes zzz-float {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(-8px); opacity: 1; }
+}
+
+#home-title h1 {
+  font-family: "Jua", sans-serif;
+  font-size: 68px;
+  letter-spacing: 4px;
+  color: #FFF3D6;
+  text-shadow: 0 5px 0 rgba(43, 45, 92, 0.9), 0 0 40px rgba(184, 169, 224, 0.8);
+}
+
+#tagline {
+  margin-top: 4px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: rgba(216, 210, 240, 0.9);
+}
+
+#home-body {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 장착 중인 스킨 미리보기 */
+#home-char {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  background: linear-gradient(165deg, rgba(38, 42, 85, 0.95), rgba(27, 29, 62, 0.95));
+  border: 1.5px solid rgba(184, 169, 224, 0.45);
+  border-radius: 24px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+#home-skin {
+  width: 180px;
+  height: 180px;
+  border-radius: 18px;
+  background: radial-gradient(70% 70% at 50% 70%, rgba(184, 169, 224, 0.28), rgba(20, 22, 46, 0.1));
+}
+
+#home-skin-name {
+  font-family: "Jua", sans-serif;
+  font-size: 16px;
+  color: #FFF3D6;
+}
+
+#home-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#home-stats {
+  display: flex;
+  gap: 10px;
+}
+
+#home-stats .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  padding: 8px 14px;
+  background: rgba(43, 45, 92, 0.8);
+  border: 1.5px solid rgba(184, 169, 224, 0.4);
+  border-radius: 16px;
+}
+
+#home-stats .k {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: rgba(184, 169, 224, 0.9);
+}
+
+#home-stats .v {
+  font-family: "Jua", sans-serif;
+  font-size: 20px;
+  color: #FFF3D6;
+}
+
+#home-stats .v.gold { color: #FFE28A; }
+
+/* 스테이지 선택 */
+#level-select {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.level-card {
+  position: relative;
+  width: 92px;
+  padding: 10px 8px 11px;
+  text-align: center;
+  color: #FFF3D6;
+  background: rgba(43, 45, 92, 0.85);
+  border: 2px solid rgba(184, 169, 224, 0.4);
+  border-radius: 18px;
+  cursor: pointer;
+  pointer-events: auto;
+  font-family: "Gowun Dodum", sans-serif;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.level-card:hover { transform: translateY(-2px); background: rgba(75, 78, 140, 0.9); }
+
+.level-card.selected {
+  border-color: #FFE28A;
+  background: rgba(85, 78, 150, 0.95);
+  box-shadow: 0 0 0 2px rgba(255, 226, 138, 0.35), 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.level-card.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.level-card.locked:hover { transform: none; background: rgba(43, 45, 92, 0.85); }
+
+.level-card .lv {
+  font-family: "Jua", sans-serif;
+  font-size: 18px;
+  color: #B8A9E0;
+}
+
+.level-card.selected .lv { color: #FFE28A; }
+
+.level-card .nm {
+  font-size: 11px;
+  line-height: 1.25;
+  margin-top: 2px;
+  min-height: 27px;
+}
+
+.level-card .goal {
+  margin-top: 4px;
+  font-size: 10px;
+  color: rgba(184, 169, 224, 0.85);
+}
+
+.level-card .cleared {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  font-size: 14px;
+}
+
+#home-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#home-help {
+  max-width: 560px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(216, 210, 240, 0.92);
+  background: rgba(20, 22, 46, 0.75);
+  border: 1.5px solid rgba(184, 169, 224, 0.3);
+  border-radius: 18px;
+  padding: 12px 18px;
+}
+
+#home-help b { color: #FFE28A; }
+
+/* ===== 레벨 HUD (진행도 바) ===== */
+#level-hud {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+#level-name {
+  font-family: "Jua", sans-serif;
+  font-size: 15px;
+  color: #FFF3D6;
+  text-shadow: 0 0 10px rgba(43, 45, 92, 0.9);
+}
+
+#progress-track {
+  position: relative;
+  width: min(280px, 34vw);
+  height: 9px;
+  background: rgba(43, 45, 92, 0.85);
+  border: 1.5px solid rgba(184, 169, 224, 0.45);
+  border-radius: 10px;
+}
+
+#progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #B8A9E0, #FFE28A);
+  transition: width 0.15s linear;
+}
+
+#progress-bed {
+  position: absolute;
+  top: -7px;
+  right: -12px;
+  font-size: 14px;
+}
+
+/* ===== 밈 방해 말풍선 ===== */
+#meme-cover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-3deg);
+  padding: 26px 44px;
+  font-family: "Jua", sans-serif;
+  font-size: 40px;
+  color: #2B2D5C;
+  background: rgba(255, 226, 138, 0.94);
+  border: 4px solid #2B2D5C;
+  border-radius: 28px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: meme-pop 0.18s ease-out;
+}
+
+@keyframes meme-pop {
+  from { transform: translate(-50%, -50%) scale(0.6) rotate(-3deg); }
+  to   { transform: translate(-50%, -50%) scale(1) rotate(-3deg); }
+}
+
+/* ===== 스테이지 클리어 화면 ===== */
+#clear {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  background: rgba(12, 13, 32, 0.6);
+  pointer-events: auto;
+}
+
+#clear h1 {
+  font-family: "Jua", sans-serif;
+  font-size: 52px;
+  letter-spacing: 2px;
+  color: #FFE28A;
+  text-shadow: 0 4px 0 rgba(43, 45, 92, 0.85), 0 0 34px rgba(255, 226, 138, 0.6);
+}
+
+#clear-level {
+  font-family: "Jua", sans-serif;
+  font-size: 20px;
+  color: #FFF3D6;
+}
+
+#clear-score {
+  font-family: "Jua", sans-serif;
+  font-size: 28px;
+  color: #B8A9E0;
+}
+
+#clear-coins {
+  font-family: "Jua", sans-serif;
+  font-size: 18px;
+  color: #FFE28A;
+}
+
+#clear-unlock {
+  font-family: "Jua", sans-serif;
+  font-size: 17px;
+  color: #8FD19A;
+  text-shadow: 0 0 12px rgba(143, 209, 154, 0.6);
+}
+
+#fail-reason {
+  font-size: 14px;
+  color: rgba(255, 181, 192, 0.95);
+  letter-spacing: 1px;
+}
+
 .hidden {
   display: none !important;
+}
+
+@media (max-width: 720px) {
+  #home-title h1 { font-size: 46px; }
+  #level-select { grid-template-columns: repeat(3, 1fr); }
+  #progress-track { width: 130px; }
 }

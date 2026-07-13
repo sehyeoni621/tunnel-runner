@@ -91,9 +91,53 @@ const CONFIG = {
     rollDecay: 9,     // 회전 연출 감쇠 속도
   },
 
+  // 방해요인(장애물) 스폰
+  obstacle: {
+    safeZone: 1500,   // 시작 직후 장애물이 안 나오는 거리
+    minGap: 620,
+    maxGap: 1250,     // 속도가 오를수록 반응 시간 확보를 위해 늘어남
+  },
+
+  // 침대(골인 지점)
+  bed: {
+    len: 260,         // 침대 깊이 (월드 단위)
+    width: 210,
+    height: 62,
+  },
+
   stars: { count: 190 },
   score: { unitsPerMeter: 100 }, // 월드 100단위 = 1m
 };
+
+// ===== 레벨 (기획서 3절: 1~5 레벨제) =====
+// goal = 침대까지의 거리(m). 레벨이 오를수록 빨라지고 방해요인이 늘어난다.
+const LEVELS = [
+  { name: '거실 탈출',       goal: 300,  base: 560, max: 1050, holes: false, obstacles: ['sibling'],                                 reward: 30 },
+  { name: '복도의 아빠',     goal: 450,  base: 640, max: 1350, holes: true,  obstacles: ['sibling', 'dad'],                          reward: 50 },
+  { name: '자니? 조XX',      goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo'],                    reward: 80 },
+  { name: '게임하자 김XX',   goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim'],             reward: 120 },
+  { name: '새벽 3시의 릴스', goal: 1000, base: 920, max: 2100, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme'],     reward: 200 },
+];
+
+// ===== 방해요인 스펙 =====
+// w/h = 히트박스 크기(월드 단위). h가 낮으면 점프로 넘을 수 있다 (점프 최고점 ≈ 110).
+// lethal: false = 죽지 않고 감속/시야 방해만
+const OBSTACLES = {
+  sibling: { w: 150, h: 40,  len: 80,  lethal: true,  label: '동생',  hint: '점프로 넘기' },
+  dad:     { w: 168, h: 170, len: 110, lethal: true,  label: '아빠',  hint: '좌우로 피하기' },
+  jo:      { w: 118, h: 150, len: 90,  lethal: true,  label: '조XX', hint: '벽에서 튀어나옴', edge: true },
+  kim:     { w: 130, h: 155, len: 90,  lethal: true,  label: '김XX', hint: '중앙에서 좌우로 흔들림', sway: 92 },
+  meme:    { w: 96,  h: 118, len: 70,  lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
+};
+
+// 밈 라인업 (기획서 5절 — 실존 인물/영상 없이 정서만 패러디)
+const MEMES = [
+  { text: '냐냐냥!!!',      rgb: [186, 132, 255] },
+  { text: '좋🤙다👍',       rgb: [255, 214, 120] },
+  { text: '파라파라~',      rgb: [130, 200, 255] },
+  { text: '영혼 없는 춤…',  rgb: [180, 160, 240] },
+  { text: '옆자리 고를래?', rgb: [255, 150, 190] },
+];
 
 // ===== 에셋 매니페스트 (manifest.json이 있으면 덮어씀) =====
 let MANIFEST = {
@@ -160,9 +204,39 @@ const shopCoinsEl = document.getElementById('shop-coins');
 const shopCloseBtn = document.getElementById('shop-close');
 const gameOverEl = document.getElementById('game-over');
 const finalScoreEl = document.getElementById('final-score');
+const failReasonEl = document.getElementById('fail-reason');
 const runCoinsEl = document.getElementById('run-coins');
 const newRecordEl = document.getElementById('new-record');
 const restartBtn = document.getElementById('restart-btn');
+
+// 홈 화면
+const homeEl = document.getElementById('home');
+const homeBestEl = document.getElementById('home-best');
+const homeCoinsEl = document.getElementById('home-coins');
+const homeSkinEl = document.getElementById('home-skin');
+const homeSkinNameEl = document.getElementById('home-skin-name');
+const levelSelectEl = document.getElementById('level-select');
+const startBtn = document.getElementById('start-btn');
+const homeShopBtn = document.getElementById('home-shop-btn');
+const homeHelpBtn = document.getElementById('home-help-btn');
+const homeHelpEl = document.getElementById('home-help');
+const overHomeBtn = document.getElementById('over-home-btn');
+
+// 인게임 HUD / 레벨 진행도
+const hudEl = document.getElementById('hud');
+const hintEl = document.getElementById('hint');
+const levelNameEl = document.getElementById('level-name');
+const progressFillEl = document.getElementById('progress-fill');
+const memeCoverEl = document.getElementById('meme-cover');
+
+// 클리어 화면
+const clearEl = document.getElementById('clear');
+const clearLevelEl = document.getElementById('clear-level');
+const clearScoreEl = document.getElementById('clear-score');
+const clearCoinsEl = document.getElementById('clear-coins');
+const clearUnlockEl = document.getElementById('clear-unlock');
+const nextBtn = document.getElementById('next-btn');
+const clearHomeBtn = document.getElementById('clear-home-btn');
 
 const ICON_MOON = '<svg viewBox="0 0 64 64" width="22" height="22"><path d="M42 8 A24 24 0 1 0 42 56 A18 18 0 1 1 42 8 Z" fill="#FFE28A" stroke="#2B2D5C" stroke-width="3" stroke-linejoin="round"/></svg>';
 const ICON_PLAY = '<svg viewBox="0 0 64 64" width="18" height="18"><path d="M20 12 L52 32 L20 52 Z" fill="#FFF3D6"/></svg>';
@@ -180,10 +254,19 @@ const SAVE_KEY = 'kkuljam.save';
 let bestMeters = 0;
 try { bestMeters = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) {}
 
-let wallet = { coins: 0, owned: ['base'], equipped: 'base' };
+// unlocked = 해금된 최고 레벨(1~5), cleared = 클리어한 레벨 번호 목록
+let wallet = { coins: 0, owned: ['base'], equipped: 'base', unlocked: 1, cleared: [] };
 try {
   const raw = JSON.parse(localStorage.getItem(SAVE_KEY));
-  if (raw && Array.isArray(raw.owned)) wallet = { coins: raw.coins | 0, owned: raw.owned, equipped: raw.equipped || 'base' };
+  if (raw && Array.isArray(raw.owned)) {
+    wallet = {
+      coins: raw.coins | 0,
+      owned: raw.owned,
+      equipped: raw.equipped || 'base',
+      unlocked: Math.min(Math.max(raw.unlocked | 0, 1), LEVELS.length),
+      cleared: Array.isArray(raw.cleared) ? raw.cleared : [],
+    };
+  }
 } catch (e) {}
 
 function saveBest(m) {
@@ -200,7 +283,7 @@ function syncCoinHud() {
 
 // ===== 게임 상태 =====
 const state = {
-  phase: 'playing',   // 'playing' | 'dying' | 'gameover'
+  phase: 'home',      // 'home' | 'playing' | 'dying' | 'gameover' | 'clear'
   paused: false,
   distance: 0,
   speed: CONFIG.run.baseSpeed,
@@ -210,22 +293,55 @@ const state = {
   runPhase: 0,        // 달리기 다리 사이클 위상
   dyingRot: 0,        // 넘어짐 회전 연출
   runCoins: 0,        // 이번 판에 모은 코인
+
+  level: 1,           // 현재 스테이지 (1~5)
+  selected: 1,        // 홈에서 고른 스테이지
+  goalZ: 0,           // 침대까지의 거리 (월드 단위)
+  clearT: 0,          // 클리어 연출 경과 시간
+  stunT: 0,           // 조작 잠김 (밈 "영혼 없는 춤")
+  slowT: 0,           // 감속 지속 시간
+  coverT: 0,          // 밈 말풍선이 화면을 가리는 시간
+  shake: 0,           // 화면 흔들림
+  deathBy: '',        // 사망 원인 (게임오버 문구)
 };
+
+function currentLevel() {
+  return LEVELS[state.level - 1] || LEVELS[0];
+}
 
 const player = {
   x: 0,
+  vx: 0,          // 좌우 속도 (가감속으로 부드럽게)
   height: 0,
   vy: 0,
   onGround: true,
+  lean: 0,        // 이동 방향으로 기우는 각도
+  squash: 0,      // 착지 스쿼시 (0이면 없음)
 };
+
+// 벽 전환 회전 트윈 (딱 끊기지 않게 이징)
+const rollAnim = { from: 0, t: 1, dur: 0.36 };
+let wallHold = 0;   // 벽에 붙어 있는 시간 (전환 판정용)
+
+function easeInOutCubic(x) {
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
+// 지수 감쇠 대신 프레임 독립 보간 계수
+function lerpK(dt, speed) {
+  return 1 - Math.exp(-speed * dt);
+}
 
 const input = { left: false, right: false };
 
 let holes = [];        // { x, width, z, len, face }
 let coins = [];        // { x, z, face, taken }
+let obstacles = [];    // { type, x, baseX, z, len, face, hit }
 let nextSpawnZ = 0;
 let nextCoinZ = 0;
+let nextObsZ = 0;
 let particles = [];
+let zzz = [];          // 엔딩 Zzz 파티클
 
 // ===== 별 배경 =====
 const stars = [];
@@ -282,15 +398,34 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') closeShop();
     return;
   }
+
+  // 홈: 좌우로 스테이지 고르고 Space/Enter로 시작
+  if (state.phase === 'home') {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') selectLevel(state.selected - 1);
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') selectLevel(state.selected + 1);
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); startLevel(state.selected); }
+    return;
+  }
+
+  if (state.phase === 'clear') {
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); goNextLevel(); }
+    if (e.code === 'Escape') showHome();
+    return;
+  }
+
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.left = true;
   if (e.code === 'ArrowRight' || e.code === 'KeyD') input.right = true;
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
-    if (state.phase === 'gameover') { restart(); return; }
+    if (state.phase === 'gameover') { startLevel(state.level); return; }
     jump();
   }
-  if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
-  if (e.code === 'KeyR' && state.phase === 'gameover') restart();
+  if (e.code === 'KeyP') togglePause();
+  if (e.code === 'Escape') {
+    if (state.phase === 'gameover') showHome();
+    else togglePause();
+  }
+  if (e.code === 'KeyR' && state.phase === 'gameover') startLevel(state.level);
 });
 window.addEventListener('keyup', (e) => {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.left = false;
@@ -303,9 +438,16 @@ document.addEventListener('visibilitychange', () => {
 });
 
 pauseBtn.addEventListener('click', togglePause);
-restartBtn.addEventListener('click', restart);
+restartBtn.addEventListener('click', () => startLevel(state.level));
 shopBtn.addEventListener('click', openShop);
 shopCloseBtn.addEventListener('click', closeShop);
+
+startBtn.addEventListener('click', () => startLevel(state.selected));
+homeShopBtn.addEventListener('click', openShop);
+homeHelpBtn.addEventListener('click', () => homeHelpEl.classList.toggle('hidden'));
+overHomeBtn.addEventListener('click', showHome);
+clearHomeBtn.addEventListener('click', showHome);
+nextBtn.addEventListener('click', goNextLevel);
 
 function jump() {
   if (state.phase !== 'playing' || state.paused) return;
@@ -325,30 +467,172 @@ function syncPauseBtn() {
   pauseBtn.innerHTML = state.paused ? ICON_PLAY : ICON_MOON;
 }
 
-function restart() {
-  state.phase = 'playing';
+// ===== 런 초기화 / 화면 전환 =====
+function resetRun(level) {
+  const lv = LEVELS[level - 1] || LEVELS[0];
+  state.level = level;
   state.paused = false;
   state.distance = 0;
-  state.speed = CONFIG.run.baseSpeed;
+  state.speed = lv.base;
   state.surface = 0;
   state.roll = 0;
   state.runPhase = 0;
   state.dyingRot = 0;
   state.runCoins = 0;
+  state.goalZ = lv.goal * CONFIG.score.unitsPerMeter;
+  state.clearT = 0;
+  state.stunT = 0;
+  state.slowT = 0;
+  state.coverT = 0;
+  state.shake = 0;
+  state.deathBy = '';
   player.x = 0;
   player.height = 0;
   player.vy = 0;
   player.onGround = true;
   holes = [];
   coins = [];
+  obstacles = [];
   particles = [];
+  zzz = [];
   nextSpawnZ = CONFIG.hole.safeZone;
   nextCoinZ = CONFIG.coin.safeZone;
+  nextObsZ = CONFIG.obstacle.safeZone;
+  input.left = false;
+  input.right = false;
+
   gameOverEl.classList.add('hidden');
+  clearEl.classList.add('hidden');
   newRecordEl.classList.add('hidden');
+  clearUnlockEl.classList.add('hidden');
+  memeCoverEl.classList.add('hidden');
   bestEl.textContent = `BEST ${bestMeters} m`;
+  levelNameEl.textContent = `${level}. ${lv.name}`;
+  progressFillEl.style.width = '0%';
   syncPauseBtn();
   syncCoinHud();
+}
+
+function startLevel(level) {
+  level = Math.min(Math.max(level, 1), LEVELS.length);
+  if (level > wallet.unlocked) return; // 잠긴 스테이지
+  resetRun(level);
+  state.phase = 'playing';
+  homeEl.classList.add('hidden');
+  hudEl.classList.remove('hidden');
+
+  // 힌트 애니메이션 다시 재생
+  hintEl.classList.remove('hidden');
+  hintEl.style.animation = 'none';
+  void hintEl.offsetWidth;
+  hintEl.style.animation = '';
+}
+
+function showHome() {
+  resetRun(state.selected);
+  state.phase = 'home';
+  homeEl.classList.remove('hidden');
+  hudEl.classList.add('hidden');
+  hintEl.classList.add('hidden');
+  homeHelpEl.classList.add('hidden');
+  refreshHome();
+}
+
+function selectLevel(level) {
+  level = Math.min(Math.max(level, 1), LEVELS.length);
+  if (level > wallet.unlocked) return;
+  state.selected = level;
+  buildLevelSelect();
+}
+
+function buildLevelSelect() {
+  levelSelectEl.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const n = i + 1;
+    const locked = n > wallet.unlocked;
+    const card = document.createElement('div');
+    card.className = 'level-card'
+      + (locked ? ' locked' : '')
+      + (state.selected === n && !locked ? ' selected' : '');
+    card.innerHTML = `
+      <div class="lv">${locked ? '🔒' : n}</div>
+      <div class="nm">${lv.name}</div>
+      <div class="goal">${lv.goal} m</div>
+      ${wallet.cleared.includes(n) ? '<div class="cleared">🌙</div>' : ''}
+    `;
+    if (!locked) {
+      card.addEventListener('click', () => selectLevel(n));
+      card.addEventListener('dblclick', () => startLevel(n));
+    }
+    levelSelectEl.appendChild(card);
+  });
+}
+
+function refreshHome() {
+  homeBestEl.textContent = `${bestMeters} m`;
+  homeCoinsEl.textContent = wallet.coins;
+
+  const skin = skinByKey(wallet.equipped);
+  homeSkinNameEl.textContent = skin.name;
+  const g = homeSkinEl.getContext('2d');
+  g.clearRect(0, 0, homeSkinEl.width, homeSkinEl.height);
+  g.save();
+  g.translate(homeSkinEl.width / 2, homeSkinEl.height - 22);
+  g.scale(1.95, 1.95);
+  drawRunnerFront(g, skin);
+  g.restore();
+
+  if (state.selected > wallet.unlocked) state.selected = wallet.unlocked;
+  buildLevelSelect();
+}
+
+// ===== 사망 / 클리어 =====
+function die(cause) {
+  if (state.phase !== 'playing') return;
+  state.phase = 'dying';
+  state.deathBy = cause;
+  state.shake = 0.35;
+  const p = playerScreenPos();
+  if (cause === 'hole') {
+    player.vy = 120;      // 구멍으로 쑥 빠짐
+  } else {
+    player.vy = -260;     // 방해꾼에 부딪혀 튕김
+    spawnBurst(p.x, p.y, [255, 120, 150], 26, 320);
+  }
+}
+
+function reachBed() {
+  state.phase = 'clear';
+  state.clearT = 0;
+  state.paused = false;
+  player.vy = -CONFIG.player.jumpVel * 0.55; // 침대로 폴짝
+  player.onGround = false;
+  memeCoverEl.classList.add('hidden');
+
+  const lv = currentLevel();
+  const meters = Math.floor(state.distance / CONFIG.score.unitsPerMeter);
+  if (meters > bestMeters) saveBest(meters);
+
+  // 보상 + 다음 스테이지 해금
+  wallet.coins += lv.reward;
+  if (!wallet.cleared.includes(state.level)) wallet.cleared.push(state.level);
+  const unlockedNew = state.level === wallet.unlocked && wallet.unlocked < LEVELS.length;
+  if (unlockedNew) wallet.unlocked = state.level + 1;
+  saveWallet();
+  syncCoinHud();
+
+  clearLevelEl.textContent = `${state.level}. ${lv.name}`;
+  clearScoreEl.textContent = `${meters} m 완주`;
+  clearCoinsEl.textContent = `⭐ +${state.runCoins} · 클리어 보상 +${lv.reward}`;
+  clearUnlockEl.classList.toggle('hidden', !unlockedNew);
+  nextBtn.classList.toggle('hidden', state.level >= LEVELS.length);
+}
+
+function goNextLevel() {
+  const next = Math.min(state.level + 1, LEVELS.length);
+  if (next > wallet.unlocked || next === state.level) { showHome(); return; }
+  state.selected = next;
+  startLevel(next);
 }
 
 // ===== 중력 전환 (벽 타기) =====
@@ -371,6 +655,14 @@ function shiftGravity(dir) {
   player.height = 0;
   player.vy = 0;
   player.onGround = true;
+
+  // 벽으로 올라타는 순간: 회전 트윈 + 살짝 튀는 느낌
+  rollAnim.from = state.roll;
+  rollAnim.t = 0;
+  player.vx = 0;
+  player.lean = dir === 'right' ? 0.3 : -0.3;
+  player.squash = 0.22;
+  wallHold = 0;
 
   const p = playerScreenPos();
   spawnBurst(p.x, p.y, [184, 139, 234], 18, 260);
@@ -411,10 +703,16 @@ function randFace() {
   return (state.surface + 1 + Math.floor(Math.random() * 3)) % 4;
 }
 
+// 침대 앞 마지막 구간은 비워 둔다 (마지막 스퍼트)
+function spawnStopZ() {
+  return state.goalZ - 700;
+}
+
 function spawnHoles() {
   const T = CONFIG.tunnel;
   const H = CONFIG.hole;
-  const horizon = state.distance + T.depth;
+  const horizon = Math.min(state.distance + T.depth, spawnStopZ());
+  if (!currentLevel().holes) return;
 
   while (nextSpawnZ < horizon) {
     // 현재 속도에서 점프로 넘을 수 있는 길이로 제한
@@ -448,7 +746,7 @@ function overlapsHole(face, x, z) {
 function spawnCoins() {
   const T = CONFIG.tunnel;
   const C = CONFIG.coin;
-  const horizon = state.distance + T.depth;
+  const horizon = Math.min(state.distance + T.depth, spawnStopZ());
 
   while (nextCoinZ < horizon) {
     const count = Math.round(rand(C.rowMin, C.rowMax));
@@ -456,13 +754,114 @@ function spawnCoins() {
     const x = rand(-T.size / 2 + 60, T.size / 2 - 60);
     for (let i = 0; i < count; i++) {
       const z = nextCoinZ + i * C.spacing;
-      if (!overlapsHole(face, x, z)) coins.push({ x, z, face, taken: false });
+      if (!overlapsHole(face, x, z) && !overlapsObstacle(face, x, z, 40)) {
+        coins.push({ x, z, face, taken: false });
+      }
     }
     nextCoinZ += count * C.spacing + rand(C.minGap, C.maxGap);
   }
 
   const cutoff = state.distance + CONFIG.camera.nearZ - 50;
   coins = coins.filter((c) => !c.taken && c.z > cutoff);
+}
+
+// ===== 방해요인 (아빠 · 동생 · 조XX · 김XX · 밈) =====
+function overlapsObstacle(face, x, z, pad) {
+  for (const o of obstacles) {
+    if (o.face !== face) continue;
+    const spec = OBSTACLES[o.type];
+    if (z > o.z - pad && z < o.z + o.len + pad && Math.abs(x - o.baseX) < spec.w / 2 + pad) return true;
+  }
+  return false;
+}
+
+function spawnObstacles() {
+  const T = CONFIG.tunnel;
+  const half = T.size / 2;
+  const types = currentLevel().obstacles;
+  const horizon = Math.min(state.distance + T.depth, spawnStopZ());
+
+  while (nextObsZ < horizon) {
+    const type = types[Math.floor(Math.random() * types.length)];
+    const spec = OBSTACLES[type];
+    const face = randFace();
+    const lim = half - spec.w / 2 - 12;
+
+    let x;
+    if (spec.edge) x = (Math.random() < 0.5 ? -1 : 1) * lim;  // 벽에서 튀어나옴
+    else if (spec.sway) x = 0;                                // 중앙 차선 점거
+    else x = rand(-lim, lim);
+
+    // 구멍 위나 다른 방해꾼과 겹치면 이번 자리는 건너뛴다 (회피 불가 조합 방지)
+    if (!overlapsHole(face, x, nextObsZ) && !overlapsObstacle(face, x, nextObsZ, 120)) {
+      obstacles.push({
+        type, face, x, baseX: x,
+        z: nextObsZ,
+        len: spec.len,
+        seed: Math.random() * Math.PI * 2,
+        meme: MEMES[Math.floor(Math.random() * MEMES.length)],
+        hit: false,
+      });
+    }
+
+    // 빨라질수록 간격을 넓혀 반응 시간을 유지한다
+    const t = Math.min(state.speed / CONFIG.run.maxSpeed, 1);
+    const O = CONFIG.obstacle;
+    nextObsZ += spec.len + rand(O.minGap, O.maxGap) * (0.75 + t * 0.9);
+  }
+
+  const cutoff = state.distance + CONFIG.camera.nearZ - 100;
+  obstacles = obstacles.filter((o) => o.z + o.len > cutoff);
+}
+
+function updateObstacles() {
+  for (const o of obstacles) {
+    const spec = OBSTACLES[o.type];
+    if (spec.sway) {
+      // 김XX: 중앙에서 좌우로 몸을 흔들며 길을 막음 → 타이밍 회피
+      const half = CONFIG.tunnel.size / 2;
+      const lim = half - spec.w / 2 - 12;
+      o.x = Math.max(-lim, Math.min(lim, o.baseX + Math.sin(state.time * 2.2 + o.seed) * spec.sway));
+    }
+  }
+}
+
+function hitMeme(o) {
+  state.slowT = 1.3;
+  state.coverT = 1.0;
+  state.speed = Math.max(currentLevel().base * 0.6, state.speed * 0.55);
+  if (o.meme.text === '영혼 없는 춤…') state.stunT = 0.5; // 따라 추느라 조작 잠김
+
+  memeCoverEl.textContent = o.meme.text;
+  memeCoverEl.classList.remove('hidden');
+  memeCoverEl.style.animation = 'none';
+  void memeCoverEl.offsetWidth;
+  memeCoverEl.style.animation = '';
+
+  const p = playerScreenPos();
+  spawnBurst(p.x, p.y, o.meme.rgb, 20, 260);
+}
+
+function checkObstacles() {
+  const pz = state.distance + CONFIG.player.z;
+  const size = CONFIG.player.size;
+
+  for (const o of obstacles) {
+    if (o.hit || o.face !== state.surface) continue;
+    const spec = OBSTACLES[o.type];
+
+    if (pz < o.z - size * 0.3 || pz > o.z + o.len + size * 0.3) continue;
+    if (Math.abs(player.x - o.x) > spec.w / 2 + size * 0.32) continue;
+
+    // 세로 판정: 플레이어 몸통 [height, height+size] vs 장애물 [bottom, top]
+    const bottom = spec.hover || 0;
+    const top = bottom + spec.h;
+    if (player.height >= top - 4 || player.height + size * 0.55 <= bottom) continue;
+
+    o.hit = true;
+    if (spec.lethal) { die(spec.label); return; }
+    hitMeme(o);
+  }
 }
 
 function collectCoins() {
@@ -492,27 +891,117 @@ function checkFall() {
     const inZ = pz > h.z + tol && pz < h.z + h.len - tol;
     const inX = Math.abs(player.x - h.x) < h.width / 2 - tol;
     if (inZ && inX) {
-      state.phase = 'dying';
-      player.vy = 120;
+      die('hole');
       return;
     }
   }
 }
 
+// ===== 클리어 연출 (침대에 뛰어들어 잠들기) =====
+function updateClear(dt) {
+  state.clearT += dt;
+  const bedTop = CONFIG.bed.height;
+
+  if (!player.onGround) {
+    player.vy += CONFIG.player.gravity * 0.5 * dt;
+    player.height -= player.vy * dt;
+    if (player.vy > 0 && player.height <= bedTop) {
+      player.height = bedTop;
+      player.vy = 0;
+      player.onGround = true;
+      const p = playerScreenPos();
+      spawnBurst(p.x, p.y, [255, 226, 138], 24, 200); // 이불 속으로 폭
+    }
+  }
+
+  // 침대 중앙으로 정렬 + 회전 원복
+  player.x += (0 - player.x) * lerpK(dt, 6);
+  player.vx = 0;
+  player.lean += (0 - player.lean) * lerpK(dt, 8);
+  player.squash += (0 - player.squash) * lerpK(dt, 10);
+  updateRoll(dt);
+  cam.x += (0 - cam.x) * lerpK(dt, 4);
+  cam.y += (0 - cam.y) * lerpK(dt, 4);
+
+  // Zzz 피어오르기
+  if (player.onGround && Math.random() < dt * 2.4) {
+    const p = playerScreenPos();
+    zzz.push({
+      x: p.x + rand(-14, 30), y: p.y - 46 * p.s,
+      vy: rand(-46, -30), size: rand(15, 30),
+      rot: rand(-0.35, 0.35), life: 2.6, maxLife: 2.6,
+    });
+  }
+  for (const z of zzz) {
+    z.y += z.vy * dt;
+    z.x += Math.sin(state.time * 2.2 + z.size) * 10 * dt;
+    z.life -= dt;
+  }
+  zzz = zzz.filter((z) => z.life > 0);
+
+  updateParticles(dt);
+
+  if (state.clearT > 1.9) clearEl.classList.remove('hidden');
+}
+
 // ===== 업데이트 =====
 function update(dt) {
   state.time += dt;
+  if (state.shake > 0) state.shake = Math.max(0, state.shake - dt);
+
+  // 밈 말풍선이 화면을 가리는 시간
+  if (state.coverT > 0) {
+    state.coverT -= dt;
+    if (state.coverT <= 0) memeCoverEl.classList.add('hidden');
+  }
+
+  if (state.phase === 'home') {
+    // 홈 배경: 지영이 터널을 천천히 달리는 데모
+    state.distance += 340 * dt;
+    state.runPhase += dt * 7.5;
+    player.x = Math.sin(state.time * 0.8) * 34;
+    player.vx = Math.cos(state.time * 0.8) * 34 * 0.8;
+    player.lean += ((player.vx / CONFIG.player.moveSpeed) * 0.9 - player.lean) * lerpK(dt, 6);
+    player.squash += (0 - player.squash) * lerpK(dt, 10);
+    updateParticles(dt);
+    cam.x += (player.x * CONFIG.camera.followX - cam.x) * lerpK(dt, 8);
+    cam.y += (0 - cam.y) * lerpK(dt, 8);
+    return;
+  }
+
+  if (state.phase === 'clear') {
+    updateClear(dt);
+    return;
+  }
 
   if (state.phase === 'playing') {
-    state.speed = Math.min(state.speed + CONFIG.run.accel * dt, CONFIG.run.maxSpeed);
-    state.distance += state.speed * dt;
-    state.runPhase += dt * (state.speed / CONFIG.run.baseSpeed) * 11;
+    const lv = currentLevel();
+    if (state.stunT > 0) state.stunT -= dt;
+    if (state.slowT > 0) state.slowT -= dt;
 
-    // 좌우 이동
+    const accel = state.slowT > 0 ? CONFIG.run.accel * 0.3 : CONFIG.run.accel;
+    state.speed = Math.min(state.speed + accel * dt, lv.max);
+    state.distance += state.speed * dt;
+    // 다리 사이클: 속도에 비례하되 너무 빨라 잔상이 되지 않게 제한
+    state.runPhase += dt * Math.min(1.7, state.speed / lv.base) * 10.5;
+
+    // 침대 도착 → 클리어 연출
+    if (state.distance + CONFIG.player.z >= state.goalZ) {
+      state.distance = state.goalZ - CONFIG.player.z;
+      reachBed();
+      return;
+    }
+
+    // 좌우 이동 — 가감속을 둬서 뚝뚝 끊기지 않게 (밈에 홀리면 조작 잠김)
     const half = CONFIG.tunnel.size / 2 - CONFIG.player.size / 2 - 8;
-    if (input.left) player.x -= CONFIG.player.moveSpeed * dt;
-    if (input.right) player.x += CONFIG.player.moveSpeed * dt;
-    player.x = Math.max(-half, Math.min(half, player.x));
+    const locked = state.stunT > 0;
+    const dir = locked ? 0 : (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const targetVx = dir * CONFIG.player.moveSpeed;
+    player.vx += (targetVx - player.vx) * lerpK(dt, dir ? 16 : 22);
+    player.x += player.vx * dt;
+
+    if (player.x <= -half) { player.x = -half; player.vx = Math.max(0, player.vx); }
+    if (player.x >= half)  { player.x = half;  player.vx = Math.min(0, player.vx); }
 
     // 점프 / 중력
     if (!player.onGround) {
@@ -522,15 +1011,27 @@ function update(dt) {
         player.height = 0;
         player.vy = 0;
         player.onGround = true;
+        player.squash = 0.3; // 착지 스쿼시
         const p = playerScreenPos();
         spawnBurst(p.x, p.y + CONFIG.player.size * p.s * 0.4, [184, 169, 224], 8, 130);
       }
+    }
 
-      // 중력 전환: 공중에서 벽에 붙은 채 그 방향을 누르고 있으면
-      if (!player.onGround) {
-        if (input.right && player.x >= half - 1) shiftGravity('right');
-        else if (input.left && player.x <= -half + 1) shiftGravity('left');
+    // 벽 타기: 벽에 붙어서 그 방향을 계속 누르면 자연스럽게 그 벽면으로 넘어감
+    // (공중이면 바로, 땅 위에서 달리는 중이면 잠깐 벽을 타고 오르는 시간을 둔다)
+    const atRight = player.x >= half - 1 && input.right && !locked;
+    const atLeft = player.x <= -half + 1 && input.left && !locked;
+    if (atRight || atLeft) {
+      wallHold += dt;
+      const need = player.onGround ? 0.14 : 0;
+      // 벽에 스치는 먼지
+      if (Math.random() < dt * 30) {
+        const p = playerScreenPos();
+        spawnBurst(p.x, p.y - CONFIG.player.size * p.s * 0.3, [184, 169, 224], 1, 70);
       }
+      if (wallHold >= need) shiftGravity(atRight ? 'right' : 'left');
+    } else {
+      wallHold = 0;
     }
 
     // 유니콘 스킨: 달릴 때 반짝이 잔상
@@ -541,31 +1042,45 @@ function update(dt) {
     }
 
     spawnHoles();
+    spawnObstacles();
     spawnCoins();
+    updateObstacles();
     collectCoins();
     checkFall();
+    checkObstacles();
 
     scoreEl.textContent = `${Math.floor(state.distance / CONFIG.score.unitsPerMeter)} m`;
+    const p = Math.min(1, (state.distance + CONFIG.player.z) / state.goalZ) * 100;
+    progressFillEl.style.width = `${p.toFixed(1)}%`;
   } else if (state.phase === 'dying') {
     player.vy += CONFIG.player.gravity * dt;
     player.height -= player.vy * dt;
     state.dyingRot += dt * 7; // 넘어지며 빙글 도는 연출
     if (player.height < -420) {
       state.phase = 'gameover';
+      const lv = currentLevel();
       const meters = Math.floor(state.distance / CONFIG.score.unitsPerMeter);
-      finalScoreEl.textContent = `${meters} m`;
+      finalScoreEl.textContent = `${meters} m / ${lv.goal} m`;
+      failReasonEl.textContent = state.deathBy === 'hole'
+        ? '구멍에 빠져 잠이 확 깼어요'
+        : `${state.deathBy}에게 붙잡혔어요`;
       runCoinsEl.textContent = `⭐ +${state.runCoins}`;
       if (meters > bestMeters) {
         saveBest(meters);
         newRecordEl.classList.remove('hidden');
       }
       saveWallet();
+      memeCoverEl.classList.add('hidden');
       gameOverEl.classList.remove('hidden');
     }
   }
 
-  state.roll *= Math.exp(-CONFIG.gravityShift.rollDecay * dt);
-  if (Math.abs(state.roll) < 0.002) state.roll = 0;
+  updateRoll(dt);
+
+  // 이동 방향으로 기울기 + 착지 스쿼시 회복
+  const leanTarget = (player.vx / CONFIG.player.moveSpeed) * 0.2;
+  player.lean += (leanTarget - player.lean) * lerpK(dt, 9);
+  player.squash += (0 - player.squash) * lerpK(dt, 12);
 
   updateParticles(dt);
 
@@ -576,8 +1091,21 @@ function update(dt) {
   const c = Math.cos(state.roll), sn = Math.sin(state.roll);
   const rx = pcx * c - pcy * sn;
   const ry = pcx * sn + pcy * c;
-  cam.x = rx * CONFIG.camera.followX;
-  cam.y = (ry - (half - CONFIG.player.size / 2)) * CONFIG.camera.followY;
+  const camTX = rx * CONFIG.camera.followX;
+  const camTY = (ry - (half - CONFIG.player.size / 2)) * CONFIG.camera.followY;
+  cam.x += (camTX - cam.x) * lerpK(dt, 11);
+  cam.y += (camTY - cam.y) * lerpK(dt, 9);
+}
+
+// 벽 전환 회전: ±90°에서 0으로 이징 (앞뒤로 부드럽게 가속·감속)
+function updateRoll(dt) {
+  if (rollAnim.t >= rollAnim.dur) {
+    state.roll = 0;
+    return;
+  }
+  rollAnim.t = Math.min(rollAnim.dur, rollAnim.t + dt);
+  const k = easeInOutCubic(rollAnim.t / rollAnim.dur);
+  state.roll = rollAnim.from * (1 - k);
 }
 
 // ===== 렌더링: 배경/터널 =====
@@ -755,6 +1283,245 @@ function drawCoins() {
   }
 }
 
+// ===== 침대 (골인 지점) =====
+function drawBed() {
+  if (!state.goalZ || state.phase === 'home') return;
+  const T = CONFIG.tunnel, B = CONFIG.bed;
+  const half = T.size / 2;
+  const near = CONFIG.camera.nearZ;
+
+  const z0 = state.goalZ - state.distance - B.len * 0.4;
+  const z1 = z0 + B.len;
+  if (z1 <= near || z0 >= T.depth) return;
+  const zn = Math.max(z0, near);
+
+  const w = B.width / 2;
+  const top = half - B.height;   // 매트리스 윗면
+  const base = half;             // 바닥
+  const P = (x, y, z) => project(x, y, z);
+
+  // 골인 지점 후광
+  const gp = project(0, top, Math.max(z0, near));
+  const R = 150 * gp.s;
+  if (R > 2) {
+    const gl = ctx.createRadialGradient(gp.x, gp.y, 0, gp.x, gp.y, R);
+    gl.addColorStop(0, 'rgba(255, 226, 138, 0.35)');
+    gl.addColorStop(1, 'rgba(255, 226, 138, 0)');
+    ctx.fillStyle = gl;
+    ctx.fillRect(gp.x - R, gp.y - R, R * 2, R * 2);
+  }
+
+  // 헤드보드 (안쪽 끝)
+  quad(P(-w, top - 46, z1), P(w, top - 46, z1), P(w, base, z1), P(-w, base, z1), '#6E5FA8');
+  // 매트리스 옆면 (가까운 쪽)
+  quad(P(-w, top, zn), P(w, top, zn), P(w, base, zn), P(-w, base, zn), '#8A7BC8');
+  // 매트리스 윗면
+  quad(P(-w, top, zn), P(w, top, zn), P(w, top, z1), P(-w, top, z1), '#FFF3D6');
+  // 이불 (앞쪽 절반, 라벤더)
+  const zb = zn + (z1 - zn) * 0.52;
+  quad(P(-w, top - 7, zn), P(w, top - 7, zn), P(w, top - 7, zb), P(-w, top - 7, zb), '#B8A9E0');
+  quad(P(-w, top - 7, zn), P(w, top - 7, zn), P(w, top + 3, zn), P(-w, top + 3, zn), '#9C8CCB');
+  // 베개
+  const zp = z1 - (z1 - zn) * 0.14;
+  quad(P(-w * 0.62, top - 12, zp - 26), P(w * 0.62, top - 12, zp - 26),
+       P(w * 0.62, top - 12, zp + 20), P(-w * 0.62, top - 12, zp + 20), '#FFFBF0');
+
+  // 외곽선
+  const a = P(-w, top, zn), b = P(w, top, zn), c = P(w, top, z1), d = P(-w, top, z1);
+  ctx.strokeStyle = 'rgba(43, 45, 92, 0.75)';
+  ctx.lineWidth = Math.max(1, 2 * gp.s);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y);
+  ctx.closePath();
+  ctx.stroke();
+}
+
+function drawZzz() {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const z of zzz) {
+    const a = Math.max(0, z.life / z.maxLife);
+    ctx.save();
+    ctx.translate(z.x, z.y);
+    ctx.rotate(z.rot);
+    ctx.font = `${z.size}px Jua, sans-serif`;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(43, 45, 92, ${a * 0.8})`;
+    ctx.strokeText('Z', 0, 0);
+    ctx.fillStyle = `rgba(255, 243, 214, ${a})`;
+    ctx.fillText('Z', 0, 0);
+    ctx.restore();
+  }
+}
+
+// ===== 방해요인 렌더 =====
+// 말풍선 (장애물 머리 위) — 월드 단위 좌표계
+function bubble(g, text, cx, cy, fill) {
+  g.font = '11px Jua, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const w = Math.max(38, g.measureText(text).width + 14);
+  rr(g, cx - w / 2, cy - 10, w, 20, 8);
+  g.fillStyle = fill; g.fill();
+  g.strokeStyle = PAL.navy; g.lineWidth = 1.8; g.stroke();
+  g.beginPath();
+  g.moveTo(cx - 4, cy + 9); g.lineTo(cx + 3, cy + 9); g.lineTo(cx - 1, cy + 16);
+  g.closePath(); g.fillStyle = fill; g.fill(); g.stroke();
+  g.fillStyle = PAL.navy;
+  g.fillText(text, cx, cy);
+}
+
+function drawObstacleShape(g, o, t) {
+  g.lineWidth = 2.2;
+  g.lineJoin = 'round';
+
+  if (o.type === 'sibling') {
+    // 바닥에서 올라온 동생 — 정수리 + 두 손 (점프로 넘기)
+    const up = 2 + Math.sin(t * 3 + o.seed) * 2;
+    g.beginPath(); g.arc(0, -up, 20, Math.PI, 0); g.closePath();
+    outlined(g, PAL.hair);
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.ellipse(s * 34, -10 - up, 9, 12, s * 0.2, 0, Math.PI * 2);
+      outlined(g, PAL.skin);
+      for (let i = -1; i <= 1; i++) {
+        g.beginPath();
+        g.moveTo(s * 34 + i * 5, -20 - up);
+        g.lineTo(s * 34 + i * 5, -27 - up);
+        g.strokeStyle = PAL.navy; g.lineWidth = 3; g.stroke();
+      }
+    }
+    g.lineWidth = 2.2;
+    return;
+  }
+
+  if (o.type === 'meme') {
+    // 릴스 밈 — 스마트폰에서 튀어나온 반투명 유령
+    const [r, gg, b] = o.meme.rgb;
+    const fl = 0.55 + 0.45 * Math.abs(Math.sin(t * 5 + o.seed));
+    const y = -70 + Math.sin(t * 2.4 + o.seed) * 8;
+    g.save();
+    g.globalAlpha = 0.9;
+    g.shadowColor = `rgba(${r},${gg},${b},${fl})`;
+    g.shadowBlur = 18;
+    g.beginPath();
+    g.arc(0, y, 26, Math.PI, 0);
+    g.lineTo(26, y + 22);
+    for (let i = 0; i < 3; i++) g.quadraticCurveTo(13 - i * 17, y + 34, -i * 17 - 4, y + 22);
+    g.lineTo(-26, y + 22);
+    g.closePath();
+    g.fillStyle = `rgba(${r},${gg},${b},0.55)`;
+    g.fill();
+    g.strokeStyle = `rgba(255,255,255,0.8)`; g.lineWidth = 2; g.stroke();
+    g.shadowBlur = 0;
+    // 눈
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.arc(s * 9, y - 2, 4, 0, Math.PI * 2);
+      g.fillStyle = PAL.navy; g.fill();
+    }
+    g.restore();
+    bubble(g, o.meme.text, 0, y - 42, `rgba(${r},${gg},${b},0.95)`);
+    return;
+  }
+
+  // 사람형 방해꾼 공통 (아빠 · 조XX · 김XX)
+  const cfg = {
+    dad: { body: '#8FA0C8', head: PAL.skin, hair: '#3A3F63', H: 150 },
+    jo:  { body: '#FFB5C0', head: PAL.skin, hair: '#4A3A55', H: 132 },
+    kim: { body: '#8FD1BA', head: PAL.skin, hair: '#5A3E2B', H: 136 },
+  }[o.type];
+  const sway = o.type === 'kim' ? Math.sin(t * 6 + o.seed) * 0.12 : 0;
+
+  g.save();
+  g.rotate(sway);
+
+  // 다리
+  for (const s of [-1, 1]) { rr(g, s * 4 + (s > 0 ? 0 : -11), -34, 11, 34, 4); outlined(g, '#4A4E7A'); }
+  // 몸통
+  rr(g, -20, -cfg.H + 40, 40, cfg.H - 74, 12);
+  outlined(g, cfg.body);
+
+  if (o.type === 'dad') {
+    // 팔짱
+    rr(g, -22, -cfg.H + 62, 44, 12, 6); outlined(g, cfg.body);
+  } else if (o.type === 'jo') {
+    // 스마트폰 든 손
+    rr(g, 16, -cfg.H + 52, 9, 26, 4); outlined(g, cfg.body);
+    rr(g, 20, -cfg.H + 46, 13, 20, 3); outlined(g, '#2B2D5C');
+    g.fillStyle = '#9FD8FF'; g.fillRect(22, -cfg.H + 49, 9, 14);
+  } else {
+    // 김XX: 양손 흔들기 (게임하자!)
+    for (const s of [-1, 1]) {
+      const a = Math.sin(t * 8 + o.seed + (s > 0 ? 0 : Math.PI)) * 0.5;
+      g.save();
+      g.translate(s * 20, -cfg.H + 54);
+      g.rotate(s * (0.5 + a));
+      rr(g, -5, -24, 10, 26, 5); outlined(g, cfg.body);
+      g.restore();
+    }
+  }
+
+  // 머리
+  const hy = -cfg.H + 22;
+  g.beginPath(); g.arc(0, hy, 20, 0, Math.PI * 2);
+  outlined(g, cfg.head);
+  g.beginPath(); g.arc(0, hy - 4, 20, Math.PI * 1.05, Math.PI * 1.95);
+  g.strokeStyle = cfg.hair; g.lineWidth = 9; g.stroke();
+  g.lineWidth = 2.2;
+
+  if (o.type === 'dad') {
+    // 안경
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.arc(s * 8, hy + 2, 6, 0, Math.PI * 2);
+      g.strokeStyle = PAL.navy; g.lineWidth = 2; g.stroke();
+    }
+    g.beginPath(); g.moveTo(-2, hy + 2); g.lineTo(2, hy + 2); g.stroke();
+  } else if (o.type === 'kim') {
+    // 헤드셋
+    g.beginPath(); g.arc(0, hy - 2, 22, Math.PI * 1.1, Math.PI * 1.9);
+    g.strokeStyle = PAL.navy; g.lineWidth = 4; g.stroke();
+    for (const s of [-1, 1]) { rr(g, s * 22 - 5, hy - 6, 10, 14, 4); outlined(g, '#2B2D5C'); }
+  } else {
+    // 조XX: 졸린 눈웃음
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.arc(s * 7, hy + 2, 4, Math.PI, 0);
+      g.strokeStyle = PAL.navy; g.lineWidth = 2; g.stroke();
+    }
+  }
+  g.restore();
+
+  const say = { dad: '아직 안 자?', jo: '자니?', kim: '한 판만!' }[o.type];
+  const fill = o.type === 'jo' ? '#FFE875' : '#FFF3D6';
+  bubble(g, say, 0, -cfg.H - 16, fill);
+}
+
+function drawObstacles() {
+  const T = CONFIG.tunnel;
+  const half = T.size / 2;
+  const near = CONFIG.camera.nearZ;
+
+  // 먼 것부터 그려서 겹침 순서 유지
+  const sorted = obstacles.slice().sort((a, b) => b.z - a.z);
+  for (const o of sorted) {
+    const z = o.z - state.distance + o.len / 2;
+    if (z <= near || z >= T.depth) continue;
+    const r = (o.face - state.surface + 4) % 4;
+    const [wx, wy] = faceRot(o.x, half, r);
+    const p = project(wx, wy, z);
+    if (p.s < 0.05) continue;
+
+    // 거리에 따라 어두워짐 (터널 셰이딩과 톤 맞추기)
+    const fade = Math.max(0.25, 1 - z / T.depth);
+
+    ctx.save();
+    ctx.globalAlpha = o.hit && OBSTACLES[o.type].lethal ? 0.35 : fade;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(state.roll + (r * Math.PI) / 2);
+    ctx.scale(p.s, p.s);
+    drawObstacleShape(ctx, o, state.time);
+    ctx.restore();
+  }
+}
+
 // ===== 캐릭터 렌더러 (벡터) =====
 // 좌표계: 발바닥 중앙 = (0,0), 위가 -y, 단위 = 월드 단위
 function rr(g, x, y, w, h, r) {
@@ -924,7 +1691,8 @@ function drawRunnerBack(g, skin, pose, phase, t) {
   g.lineWidth = 2.2;
   g.lineJoin = 'round';
 
-  const bob = pose === 'run' ? Math.sin(phase * 2) * 1.3 : 0;
+  // 상하 반동 (한 걸음마다 1회) + 점프 시엔 반동 없음
+  const bob = pose === 'run' ? Math.sin(phase * 2 - Math.PI / 2) * 1.6 : 0;
 
   // 꼬리 (뒷모습에서 보이는 스킨만)
   if (['cat', 'dino', 'pony', 'unicorn'].includes(skin.key)) {
@@ -937,16 +1705,22 @@ function drawRunnerBack(g, skin, pose, phase, t) {
     g.lineWidth = 2.2;
   }
 
-  // 다리 (달릴 땐 번갈아 들림, 점프 땐 웅크림)
+  // 다리 (달릴 땐 좌우 교대로 매끄럽게 순환, 점프 땐 웅크림)
   for (const s of [-1, 1]) {
-    let lift = 0;
-    if (pose === 'run') lift = Math.max(0, Math.sin(phase + (s > 0 ? 0 : Math.PI))) * 7;
-    else if (pose === 'jumpRise' || pose === 'jumpPeak') lift = 8;
-    else if (pose === 'jumpFall') lift = 3;
-    rr(g, s * 2 + (s > 0 ? 0 : -9), -13 - lift + bob, 9, 13, 4);
+    const a = phase + (s > 0 ? 0 : Math.PI);
+    let lift = 0, swing = 0;
+    if (pose === 'run') {
+      lift = (Math.sin(a) * 0.5 + 0.5) * 8;      // 0↔8 사이를 끊김 없이 오감
+      swing = Math.cos(a) * 3.2;                  // 앞뒤로 뻗기
+    } else if (pose === 'jumpRise' || pose === 'jumpPeak') {
+      lift = 8; swing = s * 1.5;
+    } else if (pose === 'jumpFall') {
+      lift = 3; swing = -s * 1.5;
+    }
+    rr(g, s * 2 + (s > 0 ? 0 : -9) + swing, -13 - lift + bob, 9, 13, 4);
     outlined(g, body);
     if (lift > 3) { // 들린 발바닥 (핑크 발싸개)
-      g.beginPath(); g.ellipse(s * 6.5, -1.5 - lift + bob + 12, 4, 2.4, 0, 0, Math.PI * 2);
+      g.beginPath(); g.ellipse(s * 6.5 + swing, -1.5 - lift + bob + 12, 4, 2.4, 0, 0, Math.PI * 2);
       g.fillStyle = PAL.pink; g.fill();
     }
   }
@@ -959,11 +1733,16 @@ function drawRunnerBack(g, skin, pose, phase, t) {
   g.strokeStyle = 'rgba(43,45,92,0.25)'; g.lineWidth = 1.6; g.stroke();
   g.lineWidth = 2.2;
 
-  // 팔 (달릴 때 흔들림)
+  // 팔 (어깨를 축으로 회전 — 다리와 반대 위상)
   for (const s of [-1, 1]) {
-    const swing = pose === 'run' ? Math.sin(phase + (s > 0 ? Math.PI : 0)) * 5 : (pose.startsWith('jump') ? -6 : 0);
-    rr(g, s * 12 + (s > 0 ? 0 : -7), -30 + swing * 0.5 + bob, 7, 14, 3.5);
+    const a = phase + (s > 0 ? Math.PI : 0);
+    const rot = pose === 'run' ? Math.sin(a) * 0.55 : (pose.startsWith('jump') ? -0.9 * s : 0);
+    g.save();
+    g.translate(s * 12, -29 + bob);
+    g.rotate(rot);
+    rr(g, s > 0 ? 0 : -7, -1, 7, 14, 3.5);
     outlined(g, body);
+    g.restore();
   }
 
   // 머리 (후드)
@@ -1028,6 +1807,7 @@ function drawRunnerFront(g, skin) {
 // ===== 플레이어 렌더링 (스프라이트 시트 우선, 없으면 벡터) =====
 function currentAnim() {
   if (state.phase === 'dying') return 'fall';
+  if (state.phase === 'clear' && player.onGround) return 'sleep';
   if (!player.onGround) {
     if (player.vy < -160) return 'jumpRise';
     if (player.vy < 160) return 'jumpPeak';
@@ -1042,9 +1822,10 @@ function drawPlayer() {
   const floorY = T.size / 2;
   const z = P.z;
   const skin = skinByKey(wallet.equipped);
+  const sleeping = state.phase === 'clear' && player.onGround;
 
   // 그림자
-  if (state.phase !== 'dying') {
+  if (state.phase !== 'dying' && !sleeping) {
     const sh = project(player.x, floorY, z);
     const shScale = Math.max(0.3, 1 - player.height / 260);
     ctx.fillStyle = `rgba(10, 10, 30, ${0.5 * shScale})`;
@@ -1057,14 +1838,37 @@ function drawPlayer() {
   const feet = project(player.x, floorY - player.height, z);
   const alpha = state.phase === 'dying' ? Math.max(0, 1 + player.height / 420) : 1;
 
+  // 점프 스트레치 / 착지 스쿼시
+  let sx = 1, sy = 1;
+  if (!player.onGround && state.phase === 'playing') {
+    const k = Math.max(-0.22, Math.min(0.22, -player.vy / 900));
+    sy = 1 + k * 0.6;
+    sx = 1 - k * 0.4;
+  }
+  sy *= 1 - player.squash;
+  sx *= 1 + player.squash * 0.7;
+
+  const lean = state.phase === 'dying' ? 0 : player.lean;
+
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(feet.x, feet.y);
-  ctx.rotate(state.roll + (state.phase === 'dying' ? state.dyingRot : 0));
-  ctx.scale(feet.s, feet.s);
+  // 잠들 때는 침대에 옆으로 눕는다 (발 기준점에서 90° 회전)
+  ctx.rotate(state.roll + lean + (state.phase === 'dying' ? state.dyingRot : 0) + (sleeping ? -Math.PI / 2 : 0));
+  ctx.scale(feet.s * sx, feet.s * sy);
 
   const sheet = sprites[skin.key];
   const J = MANIFEST.jiyoung;
+  if (sleeping && !(sheet && sheet.ok && J.anims)) {
+    // 벡터 모드: 앞모습(졸린 얼굴)으로 누운 포즈 + 숨쉬기
+    ctx.save();
+    ctx.scale(1, 1 + Math.sin(state.time * 2.2) * 0.03);
+    drawRunnerFront(ctx, skin);
+    ctx.restore();
+    ctx.restore();
+    return;
+  }
+
   if (sheet && sheet.ok && J.anims) {
     // 스프라이트 시트 모드 (manifest 규격 기반)
     const anim = J.anims[currentAnim()] || J.anims.run;
@@ -1107,11 +1911,23 @@ function drawPauseOverlay() {
 }
 
 function render() {
+  ctx.save();
+  if (state.shake > 0) {
+    const s = state.shake * 26;
+    ctx.translate(rand(-s, s), rand(-s, s));
+  }
+
   drawStars();
   drawTunnel();
+  drawBed();
+  drawObstacles();
   drawCoins();
   if (state.phase !== 'gameover') drawPlayer();
   drawParticles();
+  drawZzz();
+
+  ctx.restore();
+
   if (state.paused && !shopOpen()) drawPauseOverlay();
 }
 
@@ -1135,12 +1951,14 @@ function openShop() {
 function closeShop() {
   shopEl.classList.add('hidden');
   if (state.phase === 'playing' && !shopWasPaused) state.paused = false;
+  if (state.phase === 'home') refreshHome(); // 장착 스킨 미리보기 갱신
   syncPauseBtn();
 }
 
 function buildShop() {
   shopGridEl.innerHTML = '';
   syncCoinHud();
+  if (state.phase === 'home') refreshHome();
   MANIFEST.skins.forEach((skin, i) => {
     const item = document.createElement('div');
     item.className = 'shop-item' + (wallet.equipped === skin.key ? ' equipped' : '');
@@ -1214,6 +2032,7 @@ fetch('manifest.json')
   .finally(() => {
     loadSpriteSheets();
     if (!MANIFEST.skins.some((s) => s.key === wallet.equipped)) wallet.equipped = 'base';
+    if (state.phase === 'home') refreshHome();
   });
 
 // ===== 메인 루프 (deltaTime 기반, 프레임 독립적) =====
@@ -1229,5 +2048,6 @@ function gameLoop(now) {
   requestAnimationFrame(gameLoop);
 }
 
-restart();
+state.selected = wallet.unlocked;
+showHome();
 requestAnimationFrame(gameLoop);

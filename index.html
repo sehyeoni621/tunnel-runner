@@ -15,7 +15,52 @@
 
   <!-- UI 오버레이 (캔버스 위에 겹쳐지는 HTML UI) -->
   <div id="ui-layer">
-    <div id="hud">
+    <!-- ===== 메인 홈 화면 ===== -->
+    <div id="home">
+      <div id="home-inner">
+        <div id="home-title">
+          <p id="zzz">z z Z</p>
+          <h1>꿀잠 러너</h1>
+          <p id="tagline">방해꾼을 피해 침대까지 — 오늘은 꼭 꿀잠</p>
+        </div>
+
+        <div id="home-body">
+          <div id="home-char">
+            <canvas id="home-skin" width="180" height="180"></canvas>
+            <div id="home-skin-name">지영 기본</div>
+          </div>
+
+          <div id="home-side">
+            <div id="home-stats">
+              <div class="stat">
+                <span class="k">최고 기록</span>
+                <span class="v" id="home-best">0 m</span>
+              </div>
+              <div class="stat">
+                <span class="k">별사탕</span>
+                <span class="v gold" id="home-coins">0</span>
+              </div>
+            </div>
+            <div id="level-select"></div>
+          </div>
+        </div>
+
+        <div id="home-buttons">
+          <button id="start-btn">잠들러 가기</button>
+          <button id="home-shop-btn" class="ghost">키구루미 상점</button>
+          <button id="home-help-btn" class="ghost">조작법</button>
+        </div>
+
+        <div id="home-help" class="hidden">
+          <p><b>← →</b> 좌우 이동 &nbsp;·&nbsp; <b>Space</b> 점프 &nbsp;·&nbsp; 공중에서 벽 쪽으로 밀면 <b>벽 타기</b></p>
+          <p><b>동생</b>은 점프로 넘고, <b>아빠 · 조XX · 김XX</b>는 좌우로 피하세요.</p>
+          <p><b>밈</b>은 안 죽지만 시야를 가리고 느려지게 만들어요. 구멍은 점프!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 인게임 HUD ===== -->
+    <div id="hud" class="hidden">
       <div id="score-box">
         <span id="score">0 m</span>
         <span id="best">BEST 0 m</span>
@@ -24,6 +69,15 @@
           <span id="coin-count">0</span>
         </div>
       </div>
+
+      <div id="level-hud">
+        <span id="level-name">1. 거실 탈출</span>
+        <div id="progress-track">
+          <div id="progress-fill"></div>
+          <div id="progress-bed">🛏️</div>
+        </div>
+      </div>
+
       <div id="hud-buttons">
         <button id="shop-btn" title="상점">
           <svg viewBox="0 0 64 64" width="22" height="22"><circle cx="32" cy="14" r="5" fill="none" stroke="#FFF3D6" stroke-width="4"/><path d="M32 19 L32 26" stroke="#FFF3D6" stroke-width="4"/><path d="M12 46 L32 26 L52 46 Z" fill="rgba(184,169,224,0.35)" stroke="#FFF3D6" stroke-width="4" stroke-linejoin="round"/><line x1="12" y1="46" x2="52" y2="46" stroke="#FFF3D6" stroke-width="4"/></svg>
@@ -33,9 +87,12 @@
     </div>
 
     <!-- 조작 안내 (시작 후 서서히 사라짐) -->
-    <div id="hint">← → 이동 &nbsp;·&nbsp; Space 점프 &nbsp;·&nbsp; 공중에서 벽 쪽으로 밀면 벽 타기 &nbsp;·&nbsp; P 일시정지</div>
+    <div id="hint" class="hidden">← → 이동 &nbsp;·&nbsp; Space 점프 &nbsp;·&nbsp; 공중에서 벽 쪽으로 밀면 벽 타기 &nbsp;·&nbsp; P 일시정지</div>
 
-    <!-- 상점 (초기엔 숨김) -->
+    <!-- 밈에 닿았을 때 시야를 가리는 말풍선 -->
+    <div id="meme-cover" class="hidden">냐냐냥!!!</div>
+
+    <!-- ===== 상점 ===== -->
     <div id="shop" class="hidden">
       <div id="shop-panel">
         <div id="shop-head">
@@ -50,13 +107,30 @@
       </div>
     </div>
 
-    <!-- 게임 오버 화면 (초기엔 숨김) -->
+    <!-- ===== 스테이지 클리어 ===== -->
+    <div id="clear" class="hidden">
+      <h1>꿀잠 성공!</h1>
+      <p id="clear-level">1. 거실 탈출</p>
+      <p id="clear-score">0 m</p>
+      <p id="clear-coins">⭐ +0</p>
+      <p id="clear-unlock" class="hidden">🔓 새 스테이지 해금!</p>
+      <div class="btn-row">
+        <button id="next-btn">다음 스테이지</button>
+        <button id="clear-home-btn" class="ghost">홈으로</button>
+      </div>
+    </div>
+
+    <!-- ===== 게임 오버 ===== -->
     <div id="game-over" class="hidden">
       <h1>앗, 잠 깼어!</h1>
+      <p id="fail-reason">방해꾼에게 붙잡혔어요</p>
       <p id="final-score">0 m</p>
       <p id="run-coins">⭐ +0</p>
       <p id="new-record" class="hidden">🏆 최고 기록 갱신!</p>
-      <button id="restart-btn">다시 자러 가기</button>
+      <div class="btn-row">
+        <button id="restart-btn">다시 자러 가기</button>
+        <button id="over-home-btn" class="ghost">홈으로</button>
+      </div>
     </div>
   </div>
 
