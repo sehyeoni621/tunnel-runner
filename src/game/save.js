@@ -19,7 +19,7 @@ function saveBest(meters) {
 
 // unlocked = 해금된 최고 레벨, cleared = 클리어한 레벨 번호 목록
 function loadWallet(levelCount) {
-  const fallback = { coins: 0, owned: ['base'], equipped: 'base', unlocked: 1, cleared: [] };
+  const fallback = { coins: 0, owned: ['base'], equipped: 'base', unlocked: 1, cleared: [], hammers: 0 };
   try {
     const raw = JSON.parse(localStorage.getItem(SAVE_KEY));
     if (!raw || !Array.isArray(raw.owned)) return fallback;
@@ -29,6 +29,7 @@ function loadWallet(levelCount) {
       equipped: raw.equipped || 'base',
       unlocked: Math.min(Math.max(raw.unlocked | 0, 1), levelCount),
       cleared: Array.isArray(raw.cleared) ? raw.cleared : [],
+      hammers: Math.max(0, raw.hammers | 0),
     };
   } catch (e) {
     return fallback;

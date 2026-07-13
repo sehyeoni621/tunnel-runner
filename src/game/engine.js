@@ -10,7 +10,7 @@
 // 렌더링만 state.roll 각도로 회전시켜 90° 전환 연출을 만든다.
 // =====================================================================
 
-import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES } from './config.js';
+import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER } from './config.js';
 import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
 import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
 import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet } from './save.js';
@@ -64,6 +64,7 @@ function snapshot() {
     equipped: wallet.equipped,
     unlocked: wallet.unlocked,
     cleared: wallet.cleared,
+    hammers: wallet.hammers,
     meme: state.memeText ? { text: state.memeText, token: state.memeToken } : null,
     clear: state.clearInfo,
     over: state.overInfo,
@@ -77,7 +78,7 @@ function emit() {
   const key = JSON.stringify([
     s.phase, s.paused, s.level, s.selected, s.runId, s.scoreM, s.bestM,
     Math.round(s.progress * 200), s.coins, s.owned.length, s.equipped,
-    s.unlocked, s.cleared.length, s.meme && s.meme.token,
+    s.unlocked, s.cleared.length, s.hammers, s.meme && s.meme.token,
     s.clear ? s.clear.ready : false, !!s.over,
   ]);
   if (key === lastSnapshot) return;
@@ -154,6 +155,7 @@ let nextCoinZ = 0;
 let nextObsZ = 0;
 let particles = [];
 let zzz = [];          // 엔딩 Zzz 파티클
+let pops = [];         // 뽕망치 "뽕!" 팝업 텍스트
 
 // ===== 별 배경 =====
 const stars = [];
@@ -243,6 +245,7 @@ function onKeyDown(e) {
     jump();
   }
   if (e.code === 'KeyP') togglePause();
+  if (e.code === 'KeyH') useHammer();   // 뽕망치 사용
   if (e.code === 'Escape') {
     if (state.phase === 'gameover') showHome();
     else togglePause();
@@ -305,6 +308,7 @@ function resetRun(level) {
   obstacles = [];
   particles = [];
   zzz = [];
+  pops = [];
   nextSpawnZ = CONFIG.hole.safeZone;
   nextCoinZ = CONFIG.coin.safeZone;
   nextObsZ = CONFIG.obstacle.safeZone;
@@ -446,6 +450,10 @@ function spawnBurst(sx, sy, rgb, n, power) {
   }
 }
 
+function spawnPop(x, y, text) {
+  pops.push({ x, y, text, life: 0.7, maxLife: 0.7 });
+}
+
 function updateParticles(dt) {
   for (const p of particles) {
     p.x += p.vx * dt;
@@ -454,6 +462,9 @@ function updateParticles(dt) {
     p.life -= dt;
   }
   particles = particles.filter((p) => p.life > 0);
+
+  for (const p of pops) { p.y -= 42 * dt; p.life -= dt; }
+  pops = pops.filter((p) => p.life > 0);
 }
 
 // ===== 구멍 / 코인 생성 =====
@@ -1407,6 +1418,26 @@ function drawParticles() {
   }
 }
 
+function drawPops() {
+  for (const p of pops) {
+    const a = Math.max(0, p.life / p.maxLife);
+    const scale = 1.5 - 0.5 * a; // 툭 튀어나오는 느낌
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(scale, scale);
+    ctx.rotate(-0.08);
+    ctx.font = '34px Jua, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = `rgba(43, 45, 92, ${a})`;
+    ctx.strokeText(p.text, 0, 0);
+    ctx.fillStyle = `rgba(255, 226, 138, ${a})`;
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  }
+}
+
 function drawPauseOverlay() {
   ctx.fillStyle = 'rgba(12, 13, 32, 0.55)';
   ctx.fillRect(0, 0, view.w, view.h);
@@ -1437,6 +1468,7 @@ function render() {
   drawCoins();
   if (state.phase !== 'gameover') drawPlayer();
   drawParticles();
+  drawPops();
   drawZzz();
 
   ctx.restore();
@@ -1471,6 +1503,57 @@ function buySkin(key) {
     return false;                      // 코인 부족
   }
   saveWallet();
+  emit();
+  return true;
+}
+
+// ===== 뽕망치 (긴급 아이템) =====
+// 구매: 코인 차감, 동시 보유 1개까지(중복구매 방지)
+function buyHammer() {
+  if (wallet.hammers >= HAMMER.maxHold) return false; // 이미 보유 → 중복구매 X
+  if (wallet.coins < HAMMER.price) return false;      // 코인 부족
+  wallet.coins -= HAMMER.price;
+  wallet.hammers += 1;
+  saveWallet();
+  emit();
+  return true;
+}
+
+// 장애물의 화면 좌표 (파괴 이펙트 위치용) — drawObstacles와 동일한 투영
+function obstacleScreenPos(o) {
+  const half = CONFIG.tunnel.size / 2;
+  const z = o.z - state.distance + o.len / 2;
+  const r = (o.face - state.surface + 4) % 4;
+  const [wx, wy] = faceRot(o.x, half, r);
+  return project(wx, wy, z);
+}
+
+// 사용: 현재 면 앞쪽 사거리 안의 가장 가까운 치명 장애물을 부수고 지나감
+function useHammer() {
+  if (state.phase !== 'playing' || state.paused) return false;
+  if (wallet.hammers <= 0) return false;
+
+  const pz = state.distance + CONFIG.player.z;
+  let target = null, best = Infinity;
+  for (const o of obstacles) {
+    if (o.hit || o.face !== state.surface) continue;
+    if (!OBSTACLES[o.type].lethal) continue;          // 밈은 대상 아님(안 죽음)
+    if (o.z + o.len < pz) continue;                   // 이미 지나친 건 제외 (앞/겹침만)
+    const d = o.z + o.len / 2 - pz;                    // 중심까지 앞쪽 거리
+    if (d > HAMMER.range) continue;                    // 사거리 밖
+    if (d < best) { best = d; target = o; }
+  }
+  if (!target) return false;                           // 부술 대상 없으면 소모 안 함
+
+  const p = obstacleScreenPos(target);
+  obstacles = obstacles.filter((o) => o !== target);   // 뽕! 하고 사라짐
+  wallet.hammers -= 1;
+  saveWallet();
+
+  spawnBurst(p.x, p.y - 22, [255, 226, 138], 30, 380);
+  spawnBurst(p.x, p.y - 12, [255, 150, 170], 22, 300);
+  spawnPop(p.x, p.y - 46, '뽕!');
+  state.shake = Math.max(state.shake, 0.3);
   emit();
   return true;
 }
@@ -1536,6 +1619,8 @@ export {
   togglePause,
   setShopOpen,
   buySkin,
+  buyHammer,
+  useHammer,
   setMove,
   jump,
   tap,

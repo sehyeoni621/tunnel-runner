@@ -113,6 +113,10 @@ const OBSTACLES = {
   meme:    { w: 96,  h: 118, len: 70,  lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
 };
 
+// ===== 뽕망치 (긴급 아이템) =====
+// price = 코인 가격, maxHold = 동시 보유 최대(중복구매 방지), range = 앞쪽 파괴 사거리(월드 단위)
+const HAMMER = { price: 80, maxHold: 1, range: 680 };
+
 // 밈 라인업 (기획서 5절 — 실존 인물/영상 없이 정서만 패러디)
 const MEMES = [
   { text: '냐냐냥!!!',      rgb: [186, 132, 255] },
@@ -122,4 +126,4 @@ const MEMES = [
   { text: '옆자리 고를래?', rgb: [255, 150, 190] },
 ];
 
-export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES };
+export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER };

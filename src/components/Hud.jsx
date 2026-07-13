@@ -26,7 +26,16 @@ const ShopIcon = () => (
   </svg>
 );
 
-export default function Hud({ game, onPause, onShop }) {
+const HammerIcon = ({ size = 24 }) => (
+  <svg viewBox="0 0 64 64" width={size} height={size}>
+    <rect x="12" y="9" width="40" height="20" rx="7" fill="#FF8FB0" stroke="#2B2D5C" strokeWidth="3" />
+    <line x1="22" y1="14" x2="22" y2="24" stroke="#2B2D5C" strokeWidth="2.4" />
+    <line x1="42" y1="14" x2="42" y2="24" stroke="#2B2D5C" strokeWidth="2.4" />
+    <rect x="28" y="27" width="8" height="28" rx="4" fill="#FFF3D6" stroke="#2B2D5C" strokeWidth="3" />
+  </svg>
+);
+
+export default function Hud({ game, onPause, onShop, onHammer }) {
   return (
     <>
       <div id="hud">
@@ -48,6 +57,12 @@ export default function Hud({ game, onPause, onShop }) {
         </div>
 
         <div id="hud-buttons">
+          {game.hammers > 0 && (
+            <button id="hammer-btn" title="뽕망치 사용 (H)" onClick={onHammer}>
+              <HammerIcon />
+              <span className="hammer-count">{game.hammers}</span>
+            </button>
+          )}
           <button id="shop-btn" title="상점" onClick={onShop}><ShopIcon /></button>
           <button id="pause-btn" title="일시정지" onClick={onPause}>
             {game.paused ? <PlayIcon /> : <MoonIcon />}
@@ -59,10 +74,12 @@ export default function Hud({ game, onPause, onShop }) {
       {game.phase === 'playing' && (
         <div id="hint" key={game.runId}>
           <span className="hint-keyboard">
-            ← → 이동 · Space 점프 · 벽에 붙어 계속 밀면 그 벽으로 올라타기 · P 일시정지
+            ← → 이동 · Space 점프 · 벽에 붙어 계속 밀면 벽 타기
+            {game.hammers > 0 && ' · H 뽕망치로 앞 장애물 부수기'}
           </span>
           <span className="hint-touch">
-            ◀ ▶ 눌러서 이동 · 화면 탭 또는 점프 버튼 · 벽에 붙인 채 계속 누르면 벽 타기
+            ◀ ▶ 눌러서 이동 · 화면 탭 또는 점프 버튼 · 벽에 붙인 채 누르면 벽 타기
+            {game.hammers > 0 && ' · 🔨 버튼으로 앞 장애물 부수기'}
           </span>
         </div>
       )}

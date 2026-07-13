@@ -106,7 +106,7 @@ html, body {
   gap: 8px;
 }
 
-#pause-btn, #shop-btn {
+#pause-btn, #shop-btn, #hammer-btn {
   width: 42px;
   height: 42px;
   display: flex;
@@ -120,10 +120,56 @@ html, body {
   transition: background 0.15s, transform 0.1s;
 }
 
-#pause-btn:hover, #shop-btn:hover {
+#pause-btn:hover, #shop-btn:hover, #hammer-btn:hover {
   background: rgba(75, 78, 140, 0.9);
   transform: translateY(-1px);
 }
+
+/* 뽕망치 HUD 버튼 — 핑크 강조 + 보유 개수 배지 */
+#hammer-btn {
+  position: relative;
+  border-color: rgba(255, 143, 176, 0.85);
+  background: rgba(90, 45, 70, 0.85);
+  animation: hammer-ready 1.6s ease-in-out infinite;
+}
+
+#hammer-btn:hover { background: rgba(130, 60, 95, 0.95); }
+
+@keyframes hammer-ready {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 143, 176, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(255, 143, 176, 0); }
+}
+
+.hammer-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  font-family: "Jua", sans-serif;
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+  color: #2B2D5C;
+  background: #FFE28A;
+  border: 1.5px solid #2B2D5C;
+  border-radius: 9px;
+}
+
+/* 상점 뽕망치 썸네일 */
+.hammer-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  margin-bottom: 9px;
+  background: radial-gradient(70% 70% at 50% 60%, rgba(255, 143, 176, 0.35), rgba(255, 243, 214, 0.15));
+}
+
+.shop-item.hammer-item { border-color: rgba(255, 143, 176, 0.6); }
 
 /* ===== 조작 안내 힌트 ===== */
 #hint {
@@ -746,6 +792,20 @@ button.ghost:hover {
   background: rgba(120, 110, 190, 0.85);
   transform: scale(0.94);
 }
+
+.touch-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.touch-btn.hammer {
+  position: relative;
+  background: rgba(90, 45, 70, 0.75);
+  border-color: rgba(255, 143, 176, 0.85);
+}
+
+.touch-btn.hammer:active { background: rgba(150, 70, 105, 0.95); }
 
 .touch-btn.jump {
   width: 96px;

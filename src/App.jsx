@@ -41,7 +41,12 @@ export default function App() {
         {game && (
           <>
             {game.phase === 'playing' && !shopOpen && (
-              <TouchControls onMove={engine.setMove} onJump={engine.jump} />
+              <TouchControls
+                onMove={engine.setMove}
+                onJump={engine.jump}
+                hammers={game.hammers}
+                onHammer={engine.useHammer}
+              />
             )}
 
             {game.phase === 'home' && (
@@ -49,7 +54,7 @@ export default function App() {
             )}
 
             {game.phase !== 'home' && (
-              <Hud game={game} onPause={engine.togglePause} onShop={openShop} />
+              <Hud game={game} onPause={engine.togglePause} onShop={openShop} onHammer={engine.useHammer} />
             )}
 
             {game.meme && <MemeCover meme={game.meme} />}
@@ -66,7 +71,7 @@ export default function App() {
               />
             )}
 
-            {shopOpen && <Shop game={game} onBuy={engine.buySkin} onClose={closeShop} />}
+            {shopOpen && <Shop game={game} onBuy={engine.buySkin} onBuyHammer={engine.buyHammer} onClose={closeShop} />}
           </>
         )}
       </div>

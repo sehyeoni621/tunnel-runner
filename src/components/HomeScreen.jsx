@@ -72,6 +72,7 @@ export default function HomeScreen({ game, onStart, onSelect, onShop }) {
             <p><b>← →</b> 좌우 이동 · <b>Space</b> 점프 · 벽에 붙어 계속 밀면 <b>그 벽으로 올라타기</b></p>
             <p><b>동생</b>은 점프로 넘고, <b>아빠 · 조혜민 · 김예은</b>는 좌우로 피하세요.</p>
             <p><b>밈</b>은 안 죽지만 시야를 가리고 느려지게 만들어요. 구멍은 점프!</p>
+            <p>상점에서 <b>뽕망치</b>를 사두면 위급할 때 <b>H</b>(모바일은 🔨 버튼)로 앞 장애물을 부술 수 있어요.</p>
           </div>
         )}
       </div>
