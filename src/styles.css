@@ -695,6 +695,21 @@ button.ghost:hover {
   animation: meme-pop 0.18s ease-out;
 }
 
+/* 영기의 폭언 — 핑크 + 부들부들 (2초 폭주 신호) */
+#meme-cover.younggi {
+  color: #FFF3D6;
+  background: rgba(214, 62, 106, 0.95);
+  border-color: #2B2D5C;
+  text-shadow: 0 2px 0 rgba(43, 45, 92, 0.6);
+  animation: meme-pop 0.18s ease-out, younggi-shake 0.09s linear 6;
+}
+
+@keyframes younggi-shake {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-3deg); }
+  25% { transform: translate(-52%, -50%) rotate(-5deg); }
+  75% { transform: translate(-48%, -50%) rotate(-1deg); }
+}
+
 @keyframes meme-pop {
   from { transform: translate(-50%, -50%) scale(0.6) rotate(-3deg); }
   to   { transform: translate(-50%, -50%) scale(1) rotate(-3deg); }

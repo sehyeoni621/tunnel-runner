@@ -10,7 +10,7 @@
 // 렌더링만 state.roll 각도로 회전시켜 90° 전환 연출을 만든다.
 // =====================================================================
 
-import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER } from './config.js';
+import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI } from './config.js';
 import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
 import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
 import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet } from './save.js';
@@ -65,7 +65,7 @@ function snapshot() {
     unlocked: wallet.unlocked,
     cleared: wallet.cleared,
     hammers: wallet.hammers,
-    meme: state.memeText ? { text: state.memeText, token: state.memeToken } : null,
+    meme: state.memeText ? { text: state.memeText, token: state.memeToken, kind: state.memeKind } : null,
     clear: state.clearInfo,
     over: state.overInfo,
   };
@@ -105,6 +105,7 @@ const state = {
   clearT: 0,          // 클리어 연출 경과 시간
   stunT: 0,           // 조작 잠김 (밈 "영혼 없는 춤")
   slowT: 0,           // 감속 지속 시간
+  boostT: 0,          // 영기 멘트에 놀라 폭주하는 시간
   coverT: 0,          // 밈 말풍선이 화면을 가리는 시간
   shake: 0,           // 화면 흔들림
   deathBy: '',        // 사망 원인 (게임오버 문구)
@@ -112,7 +113,8 @@ const state = {
 
   // --- React UI로 넘기는 값 (DOM을 직접 만지지 않는다) ---
   runId: 0,           // 런이 바뀔 때마다 증가 (힌트 애니메이션 재생용 key)
-  memeText: '',       // 화면을 가리는 밈 말풍선
+  memeText: '',       // 화면을 가리는 말풍선 (밈 · 영기)
+  memeKind: 'meme',   // 'meme' | 'younggi' — 말풍선 스타일 구분
   memeToken: 0,       // 같은 밈이 연속으로 나와도 애니메이션이 다시 재생되도록
   clearInfo: null,    // { levelName, meters, runCoins, reward, unlockedNew, isLast }
   overInfo: null,     // { meters, goal, reason, runCoins, newRecord }
@@ -295,6 +297,7 @@ function resetRun(level) {
   state.clearT = 0;
   state.stunT = 0;
   state.slowT = 0;
+  state.boostT = 0;
   state.coverT = 0;
   state.shake = 0;
   state.deathBy = '';
@@ -606,6 +609,7 @@ function hitMeme(o) {
   if (o.meme.text === '영혼 없는 춤…') state.stunT = 0.5; // 따라 추느라 조작 잠김
 
   state.memeText = o.meme.text;
+  state.memeKind = 'meme';
   state.memeToken++;   // 같은 문구라도 애니메이션이 다시 재생되도록
   emit();
 
@@ -631,8 +635,26 @@ function checkObstacles() {
 
     o.hit = true;
     if (spec.lethal) { die(spec.label, spec.caught); return; }
-    hitMeme(o);
+    if (o.type === 'younggi') hitYounggi();
+    else hitMeme(o);
   }
+}
+
+// 영기에게 잡히면 — 죽지는 않지만 멘트에 놀라 2초간 폭주한다
+function hitYounggi() {
+  state.boostT = YOUNGGI.dur;
+  state.coverT = 1.0;
+  state.stunT = 0;      // 조작은 막지 않는다 (폭주 중에 피해야 하니까)
+
+  state.memeText = YOUNGGI.text;
+  state.memeKind = 'younggi';
+  state.memeToken++;
+  emit();
+
+  const p = playerScreenPos();
+  spawnBurst(p.x, p.y, YOUNGGI.rgb, 26, 340);
+  spawnPop(p.x, p.y - 60, YOUNGGI.text);
+  state.shake = Math.max(state.shake, 0.28);
 }
 
 function collectCoins() {
@@ -752,12 +774,25 @@ function update(dt) {
     const lv = currentLevel();
     if (state.stunT > 0) state.stunT -= dt;
     if (state.slowT > 0) state.slowT -= dt;
+    if (state.boostT > 0) state.boostT -= dt;
+
+    // 영기 멘트에 놀란 2초 동안은 속도가 확 붙는다 (그만큼 다음 장애물이 위험해짐)
+    const boost = state.boostT > 0 ? YOUNGGI.boost : 1;
 
     const accel = state.slowT > 0 ? CONFIG.run.accel * 0.3 : CONFIG.run.accel;
     state.speed = Math.min(state.speed + accel * dt, lv.max);
-    state.distance += state.speed * dt;
+    state.distance += state.speed * boost * dt;
     // 다리 사이클: 속도에 비례하되 너무 빨라 잔상이 되지 않게 제한
-    state.runPhase += dt * Math.min(1.7, state.speed / lv.base) * 10.5;
+    state.runPhase += dt * Math.min(1.9, (state.speed * boost) / lv.base) * 10.5;
+
+    // 폭주 중엔 잔상 파티클 + 미세한 흔들림으로 체감을 준다
+    if (state.boostT > 0) {
+      state.shake = Math.max(state.shake, 0.06);
+      if (Math.random() < dt * 30) {
+        const p = playerScreenPos();
+        spawnBurst(p.x + rand(-16, 16), p.y + rand(-10, 16), YOUNGGI.rgb, 1, 90);
+      }
+    }
 
     // 침대 도착 → 클리어 연출
     if (state.distance + CONFIG.player.z >= state.goalZ) {
@@ -1184,6 +1219,72 @@ function drawObstacleShape(g, o, t) {
     }
     g.restore();
     bubble(g, o.meme.text, 0, y - 42, `rgba(${r},${gg},${b},0.95)`);
+    return;
+  }
+
+  if (o.type === 'younggi') {
+    // 영기 — 대머리 정수리, 옆머리 뭉치, 네모 안경, 이마 주름. 잡히면 폭언 한 마디.
+    const H = 152;
+    const shout = 0.5 + 0.5 * Math.abs(Math.sin(t * 8 + o.seed)); // 소리치는 리듬
+
+    // 다리 · 몸통
+    for (const s of [-1, 1]) { rr(g, s * 4 + (s > 0 ? 0 : -11), -36, 11, 38, 4); outlined(g, '#4A4E7A'); }
+    rr(g, -20, -H + 44, 40, H - 80, 11);
+    outlined(g, '#9AA3B8');
+
+    // 삿대질하는 오른팔 (멘트에 맞춰 흔들림)
+    g.save();
+    g.translate(19, -H + 46);
+    g.rotate(-0.7 - shout * 0.35);
+    rr(g, -5, -4, 10, 30, 5); outlined(g, '#9AA3B8');
+    g.beginPath(); g.arc(0, 30, 6, 0, Math.PI * 2); outlined(g, PAL.skin);
+    g.restore();
+    rr(g, -24, -H + 54, 9, 28, 4); outlined(g, '#9AA3B8');
+
+    // 머리 (가로로 넓은 계란형 — 사진 느낌)
+    const hy = -H + 24;
+    g.beginPath(); g.ellipse(0, hy, 24, 21, 0, 0, Math.PI * 2);
+    outlined(g, PAL.skin);
+
+    // 옆머리 뭉치 (엉킨 실타래처럼)
+    g.strokeStyle = PAL.navy; g.lineWidth = 2;
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 5; i++) {
+        const a = -0.5 + i * 0.32;
+        g.beginPath();
+        g.arc(s * 25, hy - 8 + i * 3, 6 - i * 0.6, a, a + 4.6);
+        g.stroke();
+      }
+    }
+
+    // 이마 주름 3줄
+    for (let i = 0; i < 3; i++) {
+      const y = hy - 13 + i * 4;
+      g.beginPath();
+      g.moveTo(-11, y);
+      g.quadraticCurveTo(-4, y - 2.4, 1, y);
+      g.quadraticCurveTo(6, y + 2.4, 12, y - 0.6);
+      g.lineWidth = 1.8; g.stroke();
+    }
+
+    // 네모 안경 + 부릅뜬 눈
+    g.lineWidth = 2.4;
+    for (const s of [-1, 1]) {
+      rr(g, s > 0 ? 9 : -20, hy - 3, 11, 9, 2);   // 렌즈
+      g.fillStyle = '#FFF7EA'; g.fill();
+      g.strokeStyle = PAL.navy; g.stroke();
+      g.beginPath(); g.arc(s * 14.5, hy + 1.5, 2.6, 0, Math.PI * 2);  // 눈동자
+      g.fillStyle = PAL.navy; g.fill();
+    }
+    g.beginPath(); g.moveTo(-2, hy + 1.5); g.lineTo(2, hy + 1.5); g.strokeStyle = PAL.navy; g.stroke();
+
+    // 벌린 입 (소리치는 중)
+    g.beginPath();
+    g.ellipse(0, hy + 12, 5 + shout * 2, 3 + shout * 2.5, 0, 0, Math.PI * 2);
+    outlined(g, '#8C3A4E');
+
+    g.lineWidth = 2.2;
+    bubble(g, YOUNGGI.text, 0, -H - 18, '#FFB5C0');
     return;
   }
 
