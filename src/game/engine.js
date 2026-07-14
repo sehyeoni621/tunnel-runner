@@ -10,7 +10,7 @@
 // 렌더링만 state.roll 각도로 회전시켜 90° 전환 연출을 만든다.
 // =====================================================================
 
-import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI } from './config.js';
+import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK } from './config.js';
 import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
 import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
 import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet } from './save.js';
@@ -106,6 +106,7 @@ const state = {
   stunT: 0,           // 조작 잠김 (밈 "영혼 없는 춤")
   slowT: 0,           // 감속 지속 시간
   boostT: 0,          // 영기 멘트에 놀라 폭주하는 시간
+  drinks: 0,          // 이번 판에 마신 커피/에너지드링크 수
   coverT: 0,          // 밈 말풍선이 화면을 가리는 시간
   shake: 0,           // 화면 흔들림
   deathBy: '',        // 사망 원인 (게임오버 문구)
@@ -298,6 +299,7 @@ function resetRun(level) {
   state.stunT = 0;
   state.slowT = 0;
   state.boostT = 0;
+  state.drinks = 0;
   state.coverT = 0;
   state.shake = 0;
   state.deathBy = '';
@@ -527,10 +529,19 @@ function spawnCoins() {
     const count = Math.round(rand(C.rowMin, C.rowMax));
     const face = randFace();
     const x = rand(-T.size / 2 + 60, T.size / 2 - 60);
+
+    // 별사탕 줄 사이에 커피/에너지드링크를 섞어 둔다 (먹으면 침대가 멀어지는 함정)
+    const drinkAt = Math.random() < DRINK.chance ? Math.floor(rand(1, count)) : -1;
+
     for (let i = 0; i < count; i++) {
       const z = nextCoinZ + i * C.spacing;
       if (!overlapsHole(face, x, z) && !overlapsObstacle(face, x, z, 40)) {
-        coins.push({ x, z, face, taken: false });
+        if (i === drinkAt) {
+          const kind = DRINK.kinds[Math.floor(Math.random() * DRINK.kinds.length)];
+          coins.push({ x, z, face, taken: false, drink: kind });
+        } else {
+          coins.push({ x, z, face, taken: false });
+        }
       }
     }
     nextCoinZ += count * C.spacing + rand(C.minGap, C.maxGap);
@@ -664,10 +675,24 @@ function collectCoins() {
     if (c.taken || c.face !== state.surface) continue;
     if (Math.abs(c.z - pz) < D && Math.abs(c.x - player.x) < D && player.height < 70) {
       c.taken = true;
+      const hover = c.drink ? DRINK.hover : CONFIG.coin.hover;
+      const p = project(...faceRot(c.x, CONFIG.tunnel.size / 2 - hover, (c.face - state.surface + 4) % 4), c.z - state.distance);
+
+      if (c.drink) {
+        // 커피/에너지드링크 — 잠이 깨서 침대가 더 멀어진다
+        state.goalZ += DRINK.penalty;
+        state.drinks++;
+        const m = Math.round(DRINK.penalty / CONFIG.score.unitsPerMeter);
+        spawnPop(p.x, p.y - 30, `${c.drink.name} +${m}m`);
+        spawnBurst(p.x, p.y, [255, 120, 120], 16, 220);
+        state.shake = Math.max(state.shake, 0.18);
+        emit();
+        continue;
+      }
+
       wallet.coins++;
       state.runCoins++;
       saveWallet();
-      const p = project(...faceRot(c.x, CONFIG.tunnel.size / 2 - CONFIG.coin.hover, (c.face - state.surface + 4) % 4), c.z - state.distance);
       spawnBurst(p.x, p.y, [255, 226, 138], 8, 150);
     }
   }
@@ -716,11 +741,12 @@ function updateClear(dt) {
   cam.x += (0 - cam.x) * lerpK(dt, 4);
   cam.y += (0 - cam.y) * lerpK(dt, 4);
 
-  // Zzz 피어오르기
-  if (player.onGround && Math.random() < dt * 2.4) {
-    const p = playerScreenPos();
+  // Zzz 피어오르기 (베개 위 지영의 머리맡에서)
+  const G = bedGeom();
+  if (player.onGround && G && Math.random() < dt * 2.4) {
+    const head = project(0, G.top - 12, G.zn + (G.z1 - G.zn) * 0.66);
     zzz.push({
-      x: p.x + rand(-14, 30), y: p.y - 46 * p.s,
+      x: head.x + rand(6, 34), y: head.y - 10,
       vy: rand(-46, -30), size: rand(15, 30),
       rot: rand(-0.35, 0.35), life: 2.6, maxLife: 2.6,
     });
@@ -1060,8 +1086,12 @@ function drawCoins() {
     if (z <= near || z >= T.depth) continue;
     const r = (c.face - state.surface + 4) % 4;
     const bob = Math.sin(state.time * 3 + c.z * 0.02) * 5;
-    const [wx, wy] = faceRot(c.x, half - CONFIG.coin.hover - bob, r);
+    const hover = c.drink ? DRINK.hover : CONFIG.coin.hover;
+    const [wx, wy] = faceRot(c.x, half - hover - bob, r);
     const p = project(wx, wy, z);
+
+    if (c.drink) { drawDrink(c, p, r); continue; }
+
     const R = CONFIG.coin.radius * p.s;
     if (R < 1.2) continue;
     const spin = 0.35 + 0.65 * Math.abs(Math.sin(state.time * 3.2 + c.z * 0.015));
@@ -1082,25 +1112,86 @@ function drawCoins() {
   }
 }
 
+// 커피 / 에너지드링크 — 별사탕 사이에 섞여 있는 함정 픽업
+function drawDrink(c, p, r) {
+  const R = DRINK.radius * p.s;
+  if (R < 1.5) return;
+  const k = c.drink;
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(state.roll + (r * Math.PI) / 2);
+  ctx.scale(p.s, p.s);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = PAL.navy;
+
+  if (k.key === 'coffee') {
+    // 테이크아웃 컵 (몸통 + 뚜껑 + 홀더 + 김)
+    ctx.beginPath();
+    ctx.moveTo(-11, -4); ctx.lineTo(11, -4); ctx.lineTo(8, 18); ctx.lineTo(-8, 18);
+    ctx.closePath();
+    outlined(ctx, k.body);
+    rr(ctx, -8, 3, 16, 7, 2); outlined(ctx, k.accent);         // 홀더
+    rr(ctx, -13, -10, 26, 7, 3); outlined(ctx, k.accent);      // 뚜껑
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = 2;
+    for (const s of [-1, 1]) {                                  // 모락모락 김
+      ctx.beginPath();
+      ctx.moveTo(s * 4, -14);
+      ctx.quadraticCurveTo(s * 8, -19, s * 4, -24);
+      ctx.stroke();
+    }
+  } else {
+    // 에너지드링크 캔 (번개 마크)
+    rr(ctx, -9, -14, 18, 32, 4); outlined(ctx, k.body);
+    rr(ctx, -9, -14, 18, 5, 2); outlined(ctx, '#C9CFDA');       // 캔 뚜껑
+    ctx.beginPath();
+    ctx.moveTo(2, -8); ctx.lineTo(-4, 2); ctx.lineTo(0, 2);
+    ctx.lineTo(-2, 12); ctx.lineTo(5, 0); ctx.lineTo(1, 0);
+    ctx.closePath();
+    outlined(ctx, PAL.star);
+  }
+
+  // 코인으로 착각하지 않게 붉은 경고 링
+  ctx.strokeStyle = `rgba(255, 110, 110, ${0.35 + 0.35 * Math.abs(Math.sin(state.time * 4 + c.z))})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 2, 22, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 // ===== 침대 (골인 지점) =====
-function drawBed() {
-  if (!state.goalZ || state.phase === 'home') return;
+// 침대 기하 (렌더 · 눕는 모션 · 이불 덮기가 같은 좌표를 쓴다)
+function bedGeom() {
+  if (!state.goalZ || state.phase === 'home') return null;
   const T = CONFIG.tunnel, B = CONFIG.bed;
   const half = T.size / 2;
   const near = CONFIG.camera.nearZ;
 
   const z0 = state.goalZ - state.distance - B.len * 0.12;
   const z1 = z0 + B.len;
-  if (z1 <= near || z0 >= T.depth) return;
-  const zn = Math.max(z0, near);
+  if (z1 <= near || z0 >= T.depth) return null;
 
-  const w = B.width / 2;
-  const top = half - B.height;   // 매트리스 윗면
-  const base = half;             // 바닥
+  return {
+    z0, z1,
+    zn: Math.max(z0, near),
+    w: B.width / 2,
+    top: half - B.height,   // 매트리스 윗면
+    base: half,             // 바닥
+  };
+}
+
+function drawBed() {
+  const G = bedGeom();
+  if (!G) return;
+  const { z0, z1, zn, w, top, base } = G;
   const P = (x, y, z) => project(x, y, z);
 
   // 골인 지점 후광
-  const gp = project(0, top, Math.max(z0, near));
+  const gp = project(0, top, zn);
   const R = 150 * gp.s;
   if (R > 2) {
     const gl = ctx.createRadialGradient(gp.x, gp.y, 0, gp.x, gp.y, R);
@@ -1116,10 +1207,12 @@ function drawBed() {
   quad(P(-w, top, zn), P(w, top, zn), P(w, base, zn), P(-w, base, zn), '#8A7BC8');
   // 매트리스 윗면
   quad(P(-w, top, zn), P(w, top, zn), P(w, top, z1), P(-w, top, z1), '#FFF3D6');
-  // 이불 (앞쪽 절반, 라벤더)
-  const zb = zn + (z1 - zn) * 0.52;
-  quad(P(-w, top - 7, zn), P(w, top - 7, zn), P(w, top - 7, zb), P(-w, top - 7, zb), '#B8A9E0');
-  quad(P(-w, top - 7, zn), P(w, top - 7, zn), P(w, top + 3, zn), P(-w, top + 3, zn), '#9C8CCB');
+  // 이불 — 도착 전엔 침대 앞쪽에 개어 둔 상태 (클리어 후엔 지영이 위로 덮으므로 여기선 생략)
+  if (state.phase !== 'clear') {
+    const zb = zn + (z1 - zn) * 0.52;
+    quad(P(-w, top - 7, zn), P(w, top - 7, zn), P(w, top - 7, zb), P(-w, top - 7, zb), '#B8A9E0');
+    quad(P(-w, top - 7, zn), P(w, top - 7, zn), P(w, top + 3, zn), P(-w, top + 3, zn), '#9C8CCB');
+  }
   // 베개
   const zp = z1 - (z1 - zn) * 0.14;
   quad(P(-w * 0.62, top - 12, zp - 26), P(w * 0.62, top - 12, zp - 26),
@@ -1219,6 +1312,118 @@ function drawObstacleShape(g, o, t) {
     }
     g.restore();
     bubble(g, o.meme.text, 0, y - 42, `rgba(${r},${gg},${b},0.95)`);
+    return;
+  }
+
+  if (o.type === 'seungmin') {
+    // 권승민 — 관절 인형 해골. 한 손을 크게 흔들며 "지영아 안녕~"
+    const H = 158;
+    const bone = '#E8E2D4';
+    const wave = Math.sin(t * 6 + o.seed);   // 손 흔드는 위상
+
+    g.strokeStyle = PAL.navy;
+
+    // 다리뼈 (대퇴골 + 정강이뼈)
+    for (const s of [-1, 1]) {
+      rr(g, s * 7 + (s > 0 ? 0 : -7), -40, 7, 42, 3.5); outlined(g, bone);
+      g.beginPath(); g.arc(s * 10.5, -40, 5, 0, Math.PI * 2); outlined(g, bone); // 무릎 관절
+      g.beginPath(); g.ellipse(s * 10.5, 0, 7, 3.5, 0, 0, Math.PI * 2); outlined(g, bone); // 발
+    }
+
+    // 골반
+    g.beginPath();
+    g.moveTo(-17, -52); g.lineTo(17, -52);
+    g.quadraticCurveTo(14, -36, 0, -38);
+    g.quadraticCurveTo(-14, -36, -17, -52);
+    g.closePath(); outlined(g, bone);
+
+    // 척추
+    for (let i = 0; i < 5; i++) {
+      rr(g, -3.5, -60 - i * 7, 7, 5, 2); outlined(g, bone);
+    }
+
+    // 갈비뼈 (흉곽)
+    const ry = -H + 66;
+    rr(g, -2.5, ry - 4, 5, 34, 2); outlined(g, bone);      // 흉골
+    for (let i = 0; i < 4; i++) {
+      const y = ry + i * 8;
+      for (const s of [-1, 1]) {
+        g.beginPath();
+        g.moveTo(s * 2.5, y);
+        g.quadraticCurveTo(s * 20, y - 1, s * 17, y + 8);
+        g.strokeStyle = PAL.navy; g.lineWidth = 4.4; g.stroke();
+        g.strokeStyle = bone; g.lineWidth = 2.6; g.stroke();
+      }
+    }
+    g.lineWidth = 2.2;
+    g.strokeStyle = PAL.navy;
+
+    // 목뼈 (두개골 ↔ 흉곽 연결)
+    for (let i = 0; i < 3; i++) {
+      rr(g, -4, ry - 8 - i * 7, 8, 5, 2); outlined(g, bone);
+    }
+
+    // 어깨뼈
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.arc(s * 20, ry - 2, 5.5, 0, Math.PI * 2); outlined(g, bone);
+    }
+
+    // 왼팔은 늘어뜨리고, 오른팔은 번쩍 들어 손 흔들기
+    rr(g, -25, ry, 6, 30, 3); outlined(g, bone);
+    g.beginPath(); g.arc(-22, ry + 33, 4.5, 0, Math.PI * 2); outlined(g, bone);
+
+    g.save();
+    g.translate(20, ry - 2);
+    g.rotate(-2.5 + wave * 0.25);                 // 위로 든 팔
+    rr(g, -3, -2, 6, 26, 3); outlined(g, bone);   // 위팔
+    g.translate(0, 26);
+    g.rotate(0.5 + wave * 0.45);                  // 팔꿈치에서 흔들흔들
+    rr(g, -3, 0, 6, 24, 3); outlined(g, bone);    // 아래팔
+    // 손바닥 + 손가락 5개
+    g.translate(0, 26);
+    g.beginPath(); g.arc(0, 0, 5.5, 0, Math.PI * 2); outlined(g, bone);
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + (i - 2) * 0.36;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * 4, Math.sin(a) * 4);
+      g.lineTo(Math.cos(a) * 11, Math.sin(a) * 11);
+      g.strokeStyle = PAL.navy; g.lineWidth = 3.2; g.stroke();
+      g.strokeStyle = bone; g.lineWidth = 1.6; g.stroke();
+    }
+    g.restore();
+    g.lineWidth = 2.2;
+    g.strokeStyle = PAL.navy;
+
+    // 두개골 (사진처럼 살짝 갸웃)
+    g.save();
+    g.translate(0, -H + 26);
+    g.rotate(-0.12 + wave * 0.05);
+    g.beginPath(); g.arc(0, -6, 18, Math.PI, 0);                    // 머리 윗부분
+    g.lineTo(13, 6); g.quadraticCurveTo(0, 12, -13, 6);
+    g.closePath(); outlined(g, bone);
+    // 눈구멍 · 코구멍
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.ellipse(s * 7, -6, 5, 6, s * 0.15, 0, Math.PI * 2);
+      g.fillStyle = '#2A2A32'; g.fill();
+    }
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(-2.6, 5); g.lineTo(2.6, 5);
+    g.closePath(); g.fillStyle = '#2A2A32'; g.fill();
+    // 턱 + 이빨
+    rr(g, -11, 6, 22, 8, 3); outlined(g, bone);
+    g.strokeStyle = PAL.navy; g.lineWidth = 1.2;
+    for (let i = -3; i <= 3; i++) {
+      g.beginPath(); g.moveTo(i * 3, 6); g.lineTo(i * 3, 14); g.stroke();
+    }
+    // 이마에 새긴 이름표
+    g.font = '7px Jua, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = PAL.navy;
+    g.fillText('권승민', 0, -17);
+    g.restore();
+
+    g.lineWidth = 2.2;
+    bubble(g, '지영아 안녕~', 0, -H - 18, '#FFF3D6');
     return;
   }
 
@@ -1438,6 +1643,69 @@ function currentAnim() {
   return 'run';
 }
 
+// 침대에 누운 지영 — 몸의 축을 침대 방향(발=앞쪽, 머리=베개쪽)에 맞춰 그린다
+function drawSleeper() {
+  const G = bedGeom();
+  if (!G) return;
+  const { zn, z1, top } = G;
+  const skin = skinByKey(wallet.equipped);
+
+  const zFeet = zn + (z1 - zn) * 0.06;
+  const zHead = zn + (z1 - zn) * 0.66;   // 베개 쪽 (카메라에 가깝게 눕혀 크게 보이도록)
+  const feet = project(0, top - 3, zFeet);
+  const head = project(0, top - 3, zHead);
+
+  const dx = head.x - feet.x, dy = head.y - feet.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 4) return;
+
+  // 캐릭터 로컬 -y축(머리 방향)이 베개 쪽을 향하도록 회전 + 몸길이(≈62)에 맞춰 스케일
+  const ang = Math.atan2(dy, dx) + Math.PI / 2;
+  const scale = (len / 62) * 1.12;                          // 벡터 캐릭터 키 ≈ 62
+  const breath = 1 + Math.sin(state.time * 2.2) * 0.025;   // 숨쉬기
+
+  // 머리맡 따뜻한 조명 (얼굴이 어둠에 묻히지 않게)
+  const glow = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, 90 * head.s);
+  glow.addColorStop(0, 'rgba(255, 226, 138, 0.28)');
+  glow.addColorStop(1, 'rgba(255, 226, 138, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(head.x - 90 * head.s, head.y - 90 * head.s, 180 * head.s, 180 * head.s);
+
+  ctx.save();
+  ctx.translate(feet.x, feet.y);
+  ctx.rotate(ang);
+  ctx.scale(scale, scale * breath);
+  drawRunnerFront(ctx, skin);
+  ctx.restore();
+}
+
+// 이불 덮기 — 착지 후 발치에서 가슴까지 스르륵 올라온다 (지영 위에 그려야 하므로 별도 패스)
+function drawDuvet() {
+  const G = bedGeom();
+  if (!G) return;
+  const { zn, z1, w, top } = G;
+  const P = (x, y, z) => project(x, y, z);
+
+  const k = Math.min(1, Math.max(0, (state.clearT - 0.45) / 0.7)); // 0 → 1 (덮이는 진행도)
+  if (k <= 0) return;
+  const zEdge = zn + (z1 - zn) * (0.14 + 0.30 * k);   // 이불 윗단은 가슴까지만 (얼굴·어깨는 내놓기)
+  const y = top - 10;
+
+  quad(P(-w, y, zn), P(w, y, zn), P(w, y, zEdge), P(-w, y, zEdge), '#B8A9E0');   // 이불 윗면
+  quad(P(-w, y, zn), P(w, y, zn), P(w, top + 4, zn), P(-w, top + 4, zn), '#9C8CCB'); // 발치 옆면
+
+  // 접힌 윗단 (크림색 안감)
+  quad(P(-w, y - 3, zEdge), P(w, y - 3, zEdge),
+       P(w, y - 3, zEdge - 26), P(-w, y - 3, zEdge - 26), '#FFF3D6');
+
+  const a = P(-w, y, zEdge), b = P(w, y, zEdge);
+  ctx.strokeStyle = 'rgba(43, 45, 92, 0.6)';
+  ctx.lineWidth = Math.max(1, 2 * a.s);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+}
+
 function drawPlayer() {
   const T = CONFIG.tunnel;
   const P = CONFIG.player;
@@ -1445,6 +1713,9 @@ function drawPlayer() {
   const z = P.z;
   const skin = skinByKey(wallet.equipped);
   const sleeping = state.phase === 'clear' && player.onGround;
+
+  // 침대에 도착해 누우면 전용 렌더러 (침대 방향에 맞춘 눕기 + 이불)
+  if (sleeping) { drawSleeper(); return; }
 
   // 그림자
   if (state.phase !== 'dying' && !sleeping) {
@@ -1475,22 +1746,11 @@ function drawPlayer() {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(feet.x, feet.y);
-  // 잠들 때는 침대에 옆으로 눕는다 (발 기준점에서 90° 회전)
-  ctx.rotate(state.roll + lean + (state.phase === 'dying' ? state.dyingRot : 0) + (sleeping ? -Math.PI / 2 : 0));
+  ctx.rotate(state.roll + lean + (state.phase === 'dying' ? state.dyingRot : 0));
   ctx.scale(feet.s * sx, feet.s * sy);
 
   const sheet = sprites[skin.key];
   const J = getManifest().jiyoung;
-  if (sleeping && !(sheet && sheet.ok && J.anims)) {
-    // 벡터 모드: 앞모습(졸린 얼굴)으로 누운 포즈 + 숨쉬기
-    ctx.save();
-    ctx.scale(1, 1 + Math.sin(state.time * 2.2) * 0.03);
-    drawRunnerFront(ctx, skin);
-    ctx.restore();
-    ctx.restore();
-    return;
-  }
-
   if (sheet && sheet.ok && J.anims) {
     // 스프라이트 시트 모드 (manifest 규격 기반)
     const anim = J.anims[currentAnim()] || J.anims.run;
@@ -1568,6 +1828,8 @@ function render() {
   drawObstacles();
   drawCoins();
   if (state.phase !== 'gameover') drawPlayer();
+  // 이불은 누운 지영 위에 덮여야 하므로 플레이어 다음에 그린다
+  if (state.phase === 'clear' && player.onGround) drawDuvet();
   drawParticles();
   drawPops();
   drawZzz();

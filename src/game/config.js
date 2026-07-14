@@ -100,6 +100,8 @@ const LEVELS = [
   { name: '자니? 조혜민',    goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'younggi'],                    reward: 80 },
   { name: '게임하자 김예은', goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'younggi'],             reward: 120 },
   { name: '새벽 3시의 릴스', goal: 1000, base: 920, max: 2100, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme', 'younggi'],     reward: 200 },
+  { name: '해골 오빠?',      goal: 1250, base: 980, max: 2250, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'younggi', 'seungmin'],           reward: 260 },
+  { name: '꿈나라 문턱',     goal: 1500, base: 1040, max: 2400, holes: true, obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme', 'younggi', 'seungmin'],   reward: 400 },
 ];
 
 // ===== 방해요인 스펙 =====
@@ -112,6 +114,24 @@ const OBSTACLES = {
   kim:     { w: 130, h: 155, len: 90,  lethal: true,  label: '김예은', hint: '중앙에서 좌우로 흔들림', sway: 92, caught: '김예은에게 불친절했어요ㅠㅠ' },
   meme:    { w: 96,  h: 118, len: 70,  lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
   younggi: { w: 138, h: 162, len: 100, lethal: false, label: '영기', hint: '멘트에 놀라 2초간 폭주' },
+  seungmin: {
+    w: 140, h: 168, len: 100, lethal: true,
+    label: '권승민', hint: '해골이 손 흔들며 인사 — 좌우로 피하기',
+    caught: '해골 권승민이 반갑게 붙잡았어요',
+  },
+};
+
+// ===== 커피 · 에너지드링크 (별사탕 사이에 섞여 나오는 함정 픽업) =====
+// 마시면 잠이 확 깨서 침대까지의 거리가 늘어난다 (골인 지점이 뒤로 밀림)
+const DRINK = {
+  chance: 0.5,        // 코인 한 줄에 음료가 섞일 확률
+  penalty: 3000,      // 늘어나는 거리 (월드 단위 = 30m)
+  radius: 17,
+  hover: 20,
+  kinds: [
+    { key: 'coffee', name: '커피',       body: '#F3EDE2', accent: '#6B4A32' },
+    { key: 'energy', name: '에너지드링크', body: '#8FD1BA', accent: '#2B7A5A' },
+  ],
 };
 
 // ===== 영기 (비살상 방해꾼) =====
@@ -131,4 +151,4 @@ const MEMES = [
   { text: '옆자리 고를래?', rgb: [255, 150, 190] },
 ];
 
-export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI };
+export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK };

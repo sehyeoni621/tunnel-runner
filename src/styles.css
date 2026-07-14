@@ -554,7 +554,7 @@ button.ghost:hover {
 /* 스테이지 선택 */
 #level-select {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);   /* 스테이지가 늘어나면 다음 줄로 */
   gap: 8px;
 }
 
