@@ -7,6 +7,7 @@ import ClearPanel from './components/ClearPanel.jsx';
 import GameOverPanel from './components/GameOverPanel.jsx';
 import MemeCover from './components/MemeCover.jsx';
 import TouchControls from './components/TouchControls.jsx';
+import { attachTouchGestures } from './game/touch.js';
 
 // 캔버스 게임 엔진(60fps 루프)은 React 밖에서 돌고,
 // React는 엔진이 통지하는 스냅샷으로 UI 레이어만 그린다.
@@ -16,6 +17,12 @@ export default function App() {
   const [shopOpen, setShopOpen] = useState(false);
 
   useEffect(() => engine.init(canvasRef.current, setGame), []);
+
+  // 캔버스 위 터치 제스처 — 끌면 이동, 톡 치면 점프 (조작 버튼이 안 먹는 기기 대비)
+  useEffect(() => attachTouchGestures(canvasRef.current, {
+    onMove: engine.setMove,
+    onJump: engine.tap,
+  }), []);
 
   // 상점은 UI 상태 + 엔진 일시정지가 함께 움직인다
   const openShop = useCallback(() => { setShopOpen(true); engine.setShopOpen(true); }, []);
@@ -30,12 +37,8 @@ export default function App() {
 
   return (
     <>
-      {/* 캔버스를 탭하면 점프 (모바일) */}
-      <canvas
-        id="game-canvas"
-        ref={canvasRef}
-        onPointerDown={(e) => { if (e.pointerType !== 'mouse') engine.tap(); }}
-      />
+      {/* 터치 조작은 attachTouchGestures가 담당 (끌기=이동, 탭=점프) */}
+      <canvas id="game-canvas" ref={canvasRef} />
 
       <div id="ui-layer">
         {game && (

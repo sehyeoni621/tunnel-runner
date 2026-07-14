@@ -78,7 +78,7 @@ export default function Hud({ game, onPause, onShop, onHammer }) {
             {game.hammers > 0 && ' · H 뽕망치로 앞 장애물 부수기'}
           </span>
           <span className="hint-touch">
-            ◀ ▶ 눌러서 이동 · 화면 탭 또는 점프 버튼 · 벽에 붙인 채 누르면 벽 타기
+            화면을 좌우로 끌어 이동 (◀ ▶ 버튼도 가능) · 톡 치면 점프 · 벽에 붙인 채 유지하면 벽 타기
             {game.hammers > 0 && ' · 🔨 버튼으로 앞 장애물 부수기'}
           </span>
         </div>
