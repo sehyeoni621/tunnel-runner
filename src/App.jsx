@@ -69,12 +69,22 @@ export default function App() {
             {game.over && (
               <GameOverPanel
                 info={game.over}
+                game={game}
+                onRevive={engine.useMelatonin}
                 onRetry={() => engine.startLevel(game.level)}
                 onHome={engine.showHome}
               />
             )}
 
-            {shopOpen && <Shop game={game} onBuy={engine.buySkin} onBuyHammer={engine.buyHammer} onClose={closeShop} />}
+            {shopOpen && (
+              <Shop
+                game={game}
+                onBuy={engine.buySkin}
+                onBuyHammer={engine.buyHammer}
+                onBuyMelatonin={engine.buyMelatonin}
+                onClose={closeShop}
+              />
+            )}
           </>
         )}
       </div>

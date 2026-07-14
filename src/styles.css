@@ -23,17 +23,20 @@ html, body {
   touch-action: manipulation;                /* 더블탭 확대 방지 */
 }
 
+/* --app-w / --app-h = 실제로 보이는 영역 (엔진의 resizeCanvas가 매번 갱신).
+   모바일에서 100vh는 주소창 높이를 포함해 아래가 잘리므로 쓰지 않는다. */
 #root {
-  width: 100%;
-  height: 100%;
+  width: var(--app-w, 100%);
+  height: var(--app-h, 100%);
 }
 
 /* ===== 게임 캔버스 (전체 화면) ===== */
 #game-canvas {
   position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 0;
+  left: 0;
+  width: var(--app-w, 100%);
+  height: var(--app-h, 100%);
   display: block;
   touch-action: none;   /* 캔버스에서 스크롤/줌 대신 게임 조작만 */
 }
@@ -41,7 +44,10 @@ html, body {
 /* ===== UI 오버레이 ===== */
 #ui-layer {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: var(--app-w, 100%);
+  height: var(--app-h, 100%);
   pointer-events: none; /* 캔버스 조작 방해 금지, 버튼만 개별 허용 */
   color: #EDE9FB;
 }
@@ -53,14 +59,16 @@ html, body {
 }
 
 /* ===== HUD (점수 + 코인 + 버튼) ===== */
+/* 노치·펀치홀·둥근 모서리에 가리지 않도록 안전영역만큼 띄운다 */
 #hud {
   position: absolute;
-  top: 16px;
-  left: 16px;
-  right: 16px;
+  top: calc(16px + env(safe-area-inset-top));
+  left: calc(16px + env(safe-area-inset-left));
+  right: calc(16px + env(safe-area-inset-right));
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 10px;
 }
 
 #score-box {
@@ -157,6 +165,71 @@ html, body {
   border-radius: 9px;
 }
 
+/* HUD 멜라토닌 보유 개수 */
+#melatonin-count {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(184, 169, 224, 0.4);
+  font-family: "Jua", sans-serif;
+  font-size: 14px;
+  color: #9FD8FF;
+}
+
+/* 상점 멜라토닌 */
+.pill-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  margin-bottom: 9px;
+  background: radial-gradient(70% 70% at 50% 60%, rgba(159, 216, 255, 0.4), rgba(255, 243, 214, 0.15));
+}
+
+.shop-item.pill-item { border-color: rgba(159, 216, 255, 0.6); }
+
+.shop-item .own-badge {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  font-family: "Jua", sans-serif;
+  font-size: 11px;
+  color: #2B7A9B;
+  background: rgba(159, 216, 255, 0.45);
+  border-radius: 9px;
+  padding: 1px 7px;
+}
+
+/* 게임오버 부활 버튼 */
+#revive-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 11px 26px;
+  font-size: 18px;
+  color: #2B2D5C;
+  background: #9FD8FF;
+  border: 3px solid #2B2D5C;
+  border-radius: 34px;
+  box-shadow: 0 5px 0 rgba(43, 45, 92, 0.5), 0 12px 26px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+#revive-btn:hover { transform: translateY(-2px); }
+#revive-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 rgba(43, 45, 92, 0.5);
+}
+
+#revive-btn .revive-sub {
+  font-family: "Gowun Dodum", sans-serif;
+  font-size: 11px;
+  color: rgba(43, 45, 92, 0.75);
+}
+
 /* 상점 뽕망치 썸네일 */
 .hammer-thumb {
   width: 100%;
@@ -202,8 +275,9 @@ html, body {
 }
 
 #shop-panel {
-  width: min(860px, 94vw);
-  max-height: 88vh;
+  width: min(860px, 94%);
+  /* 보이는 영역(--app-h) 기준 + 안전영역을 뺀 높이 → 위아래가 잘리지 않는다 */
+  max-height: calc(var(--app-h, 100vh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   background: linear-gradient(165deg, #262a55, #1b1d3e);
@@ -342,6 +416,8 @@ html, body {
   justify-content: center;
   align-items: center;
   gap: 12px;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
   background: rgba(12, 13, 32, 0.7);
 }
 
@@ -438,7 +514,15 @@ button.ghost:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 내용이 화면보다 길면 잘리지 않고 스크롤되게 (작은 폰·가로 모드) */
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding:
+    calc(12px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left));
   background: radial-gradient(120% 90% at 50% 40%, rgba(43, 45, 92, 0.55), rgba(10, 11, 26, 0.9));
   pointer-events: auto;
 }
@@ -724,7 +808,8 @@ button.ghost:hover {
   justify-content: center;
   align-items: center;
   gap: 10px;
-  padding-bottom: 26vh;   /* 침대에서 자는 지영이 가리지 않게 위쪽에 배치 */
+  padding: calc(16px + env(safe-area-inset-top)) 16px 26%;  /* 침대에서 자는 지영을 가리지 않게 위쪽 배치 */
+  overflow-y: auto;
   background: linear-gradient(180deg, rgba(12, 13, 32, 0.78) 45%, rgba(12, 13, 32, 0.15));
   pointer-events: auto;
 }
@@ -855,8 +940,91 @@ button.ghost:hover {
   display: none !important;
 }
 
+/* ===== 좁은 화면 (세로 폰) ===== */
 @media (max-width: 720px) {
-  #home-title h1 { font-size: 46px; }
-  #level-select { grid-template-columns: repeat(3, 1fr); }
-  #progress-track { width: 130px; }
+  #home-title h1 { font-size: 34px; letter-spacing: 2px; }
+  #zzz { font-size: 14px; letter-spacing: 4px; }
+  #tagline { font-size: 11px; margin-top: 2px; }
+
+  #home-inner { gap: 10px; padding: 4px; width: 100%; }
+  /* 캐릭터 미리보기와 스탯·스테이지를 한 줄에 나란히 → 세로 길이 절약 */
+  #home-body { gap: 10px; flex-wrap: nowrap; align-items: center; width: 100%; }
+  #home-side { flex: 1; min-width: 0; }
+  .home-skin { width: 92px; height: 92px; }
+  #home-char { padding: 8px 8px 6px; gap: 4px; }
+  #home-skin-name { font-size: 12px; }
+
+  #home-stats { gap: 6px; }
+  #home-stats .stat { min-width: 0; flex: 1; padding: 5px 8px; border-radius: 12px; }
+  #home-stats .k { font-size: 10px; }
+  #home-stats .v { font-size: 16px; }
+
+  #level-select { grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .level-card { width: auto; padding: 5px 3px 6px; border-radius: 12px; }
+  .level-card .lv { font-size: 14px; }
+  .level-card .nm { font-size: 9px; min-height: 22px; line-height: 1.15; }
+  .level-card .goal { font-size: 9px; margin-top: 2px; }
+  .level-card .cleared { font-size: 11px; }
+
+  #home-buttons { gap: 8px; }
+  #start-btn { padding: 11px 26px; font-size: 17px; }
+  button.ghost { padding: 9px 16px; font-size: 13px; }
+
+  #home-help { font-size: 11px; line-height: 1.6; padding: 8px 12px; }
+
+  /* HUD: 점수·레벨·버튼이 서로 밀어내지 않게 압축 */
+  #score { font-size: 19px; }
+  #level-name { font-size: 12px; }
+  #progress-track { width: min(140px, 32vw); }
+  #meme-cover { font-size: 26px; padding: 18px 26px; }
+}
+
+/* ===== 낮은 화면 (가로 모드 폰) — 세로 공간이 부족하니 좌우 2단으로 ===== */
+@media (max-height: 560px) {
+  #home-inner {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 10px 18px;
+    padding: 4px;
+    max-width: 100%;
+  }
+  #home-title { flex: 0 0 auto; }
+  #home-body { flex: 0 1 auto; align-items: center; }
+  #home-buttons { flex: 1 0 100%; gap: 8px; }
+  #home-help { flex: 1 0 100%; max-width: 100%; }
+
+  #home-title h1 { font-size: 30px; letter-spacing: 1px; }
+  #zzz { font-size: 12px; }
+  #tagline { display: none; }
+
+  .home-skin { width: 84px; height: 84px; }
+  #home-char { padding: 7px 8px 5px; gap: 3px; }
+  #home-skin-name { font-size: 11px; }
+
+  #home-stats .stat { padding: 4px 8px; min-width: 0; }
+  #home-stats .k { font-size: 9px; }
+  #home-stats .v { font-size: 14px; }
+
+  #level-select { grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .level-card { width: auto; padding: 5px 3px 6px; border-radius: 11px; }
+  .level-card .lv { font-size: 13px; }
+  .level-card .nm { font-size: 8.5px; min-height: 20px; line-height: 1.1; }
+  .level-card .goal { font-size: 8.5px; margin-top: 1px; }
+
+  #start-btn { padding: 8px 22px; font-size: 15px; }
+  button.ghost { padding: 7px 14px; font-size: 12px; }
+  #home-help { font-size: 10.5px; line-height: 1.5; padding: 6px 10px; }
+
+  /* 조작 패드가 화면 아래를 다 먹지 않도록 */
+  .touch-btn { width: 58px; height: 58px; font-size: 20px; }
+  .touch-btn.jump { width: 70px; height: 70px; font-size: 15px; }
+  #touch-controls { bottom: calc(12px + env(safe-area-inset-bottom)); }
+  #hint { display: none; }
+
+  /* 결과 패널도 낮은 화면에 맞춰 압축 */
+  #game-over h1, #clear h1 { font-size: 30px; }
+  #final-score, #clear-score { font-size: 20px; }
+  #clear { padding-bottom: 12%; }
 }

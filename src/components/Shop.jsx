@@ -1,7 +1,21 @@
 import { useState } from 'react';
 import { getManifest } from '../game/assets.js';
-import { HAMMER } from '../game/config.js';
+import { HAMMER, MELATONIN } from '../game/config.js';
 import SkinCanvas from './SkinCanvas.jsx';
+
+// 멜라토닌 — 죽어도 그 자리에서 다시 이어 달리는 부활 아이템
+const PillThumb = () => (
+  <div className="pill-thumb">
+    <svg viewBox="0 0 64 64" width="72" height="72">
+      <g transform="rotate(-35 32 32)">
+        <rect x="14" y="22" width="36" height="20" rx="10" fill="#9FD8FF" stroke="#2B2D5C" strokeWidth="3.5" />
+        <path d="M32 22 L32 42" stroke="#2B2D5C" strokeWidth="3" />
+        <path d="M14 32 a10 10 0 0 1 10 -10 h8 v20 h-8 a10 10 0 0 1 -10 -10 Z" fill="#FFF3D6" stroke="#2B2D5C" strokeWidth="3.5" />
+      </g>
+      <text x="32" y="58" textAnchor="middle" fontSize="11" fill="#2B2D5C" fontFamily="Jua, sans-serif">z z Z</text>
+    </svg>
+  </div>
+);
 
 const HammerThumb = () => (
   <div className="hammer-thumb">
@@ -14,7 +28,7 @@ const HammerThumb = () => (
   </div>
 );
 
-export default function Shop({ game, onBuy, onBuyHammer, onClose }) {
+export default function Shop({ game, onBuy, onBuyHammer, onBuyMelatonin, onClose }) {
   const [denied, setDenied] = useState(null); // 코인 부족 → 흔들기
   const skins = getManifest().skins;
   const hammerOwned = game.hammers > 0;
@@ -36,6 +50,14 @@ export default function Shop({ game, onBuy, onBuyHammer, onClose }) {
     }
   };
 
+  const handleMelatonin = () => {
+    const ok = onBuyMelatonin();   // 여러 개 구매 가능
+    if (!ok) {
+      setDenied(null);
+      requestAnimationFrame(() => setDenied('__melatonin'));
+    }
+  };
+
   return (
     <div id="shop" onClick={(e) => e.target.id === 'shop' && onClose()}>
       <div id="shop-panel">
@@ -54,6 +76,20 @@ export default function Shop({ game, onBuy, onBuyHammer, onClose }) {
         </div>
 
         <div id="shop-grid">
+          {/* 부활 아이템: 멜라토닌 (여러 개 구매 가능) */}
+          <div
+            className={`shop-item pill-item${game.melatonin > 0 ? ' equipped' : ''}${denied === '__melatonin' ? ' denied' : ''}`}
+            onClick={handleMelatonin}
+            onAnimationEnd={() => denied === '__melatonin' && setDenied(null)}
+          >
+            <div className="no">아이템</div>
+            <PillThumb />
+            <div className="name">멜라토닌</div>
+            <div className="tag">죽어도 그 자리에서 부활 · 한 판에 2번까지</div>
+            <div className={`price${game.coins < MELATONIN.price ? ' locked' : ''}`}>⭐ {MELATONIN.price}</div>
+            {game.melatonin > 0 && <div className="own-badge">보유 {game.melatonin}개</div>}
+          </div>
+
           {/* 긴급 아이템: 뽕망치 (1개만 보유, 중복구매 X) */}
           <div
             className={`shop-item hammer-item${hammerOwned ? ' equipped' : ''}${denied === '__hammer' ? ' denied' : ''}`}

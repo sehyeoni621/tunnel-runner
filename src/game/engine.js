@@ -10,7 +10,7 @@
 // 렌더링만 state.roll 각도로 회전시켜 90° 전환 연출을 만든다.
 // =====================================================================
 
-import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK } from './config.js';
+import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN } from './config.js';
 import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
 import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
 import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet } from './save.js';
@@ -24,18 +24,31 @@ let shopIsOpen = false;
 let lastSnapshot = '';
 
 // 논리 화면 크기(CSS 픽셀). 캔버스 버퍼는 DPR만큼 키워서 레티나/모바일에서도 선명하게.
-const view = { w: 0, h: 0, dpr: 1 };
+const view = { w: 0, h: 0, dpr: 1, fov: CONFIG.camera.fov };
 
 function resizeCanvas() {
   if (!canvas) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2); // 3x 기기에서 과도한 부하 방지
-  view.w = window.innerWidth;
-  view.h = window.innerHeight;
+
+  // 모바일 주소창이 접히고 펴질 때 실제로 보이는 영역 (visualViewport) 기준으로 맞춘다.
+  // window.innerHeight만 쓰면 주소창 높이만큼 아래가 잘린다.
+  const vv = window.visualViewport;
+  view.w = Math.round(vv ? vv.width : window.innerWidth);
+  view.h = Math.round(vv ? vv.height : window.innerHeight);
   view.dpr = dpr;
+
+  // 화면이 좁을수록(세로 폰) 시야를 넓혀 터널이 화면 밖으로 잘려 보이지 않게 한다
+  const k = Math.min(view.w, view.h) / 760;
+  view.fov = CONFIG.camera.fov * Math.max(0.72, Math.min(1.1, k));
+
   canvas.width = Math.round(view.w * dpr);
   canvas.height = Math.round(view.h * dpr);
   canvas.style.width = `${view.w}px`;
   canvas.style.height = `${view.h}px`;
+
+  // UI 레이어도 같은 높이를 쓰도록 CSS 변수로 알려준다 (100vh는 모바일에서 부정확)
+  document.documentElement.style.setProperty('--app-w', `${view.w}px`);
+  document.documentElement.style.setProperty('--app-h', `${view.h}px`);
 }
 
 // ===== 저장 데이터 =====
@@ -65,6 +78,10 @@ function snapshot() {
     unlocked: wallet.unlocked,
     cleared: wallet.cleared,
     hammers: wallet.hammers,
+    melatonin: wallet.melatonin,
+    // 부활: 첫 번째는 1개, 두 번째는 2개 (한 판에 최대 2번)
+    reviveCost: state.revives + 1,
+    canRevive: state.revives < MELATONIN.maxRevives && wallet.melatonin >= state.revives + 1,
     meme: state.memeText ? { text: state.memeText, token: state.memeToken, kind: state.memeKind } : null,
     clear: state.clearInfo,
     over: state.overInfo,
@@ -78,7 +95,8 @@ function emit() {
   const key = JSON.stringify([
     s.phase, s.paused, s.level, s.selected, s.runId, s.scoreM, s.bestM,
     Math.round(s.progress * 200), s.coins, s.owned.length, s.equipped,
-    s.unlocked, s.cleared.length, s.hammers, s.meme && s.meme.token,
+    s.unlocked, s.cleared.length, s.hammers, s.melatonin, s.canRevive,
+    s.meme && s.meme.token,
     s.clear ? s.clear.ready : false, !!s.over,
   ]);
   if (key === lastSnapshot) return;
@@ -107,6 +125,8 @@ const state = {
   slowT: 0,           // 감속 지속 시간
   boostT: 0,          // 영기 멘트에 놀라 폭주하는 시간
   drinks: 0,          // 이번 판에 마신 커피/에너지드링크 수
+  revives: 0,         // 이번 판에 멜라토닌으로 부활한 횟수
+  invulnT: 0,         // 부활 직후 무적 시간
   coverT: 0,          // 밈 말풍선이 화면을 가리는 시간
   shake: 0,           // 화면 흔들림
   deathBy: '',        // 사망 원인 (게임오버 문구)
@@ -193,7 +213,7 @@ function project(x, y, z) {
   const c = Math.cos(state.roll), sn = Math.sin(state.roll);
   const rx = x * c - y * sn;
   const ry = x * sn + y * c;
-  const s = CONFIG.camera.fov / z;
+  const s = view.fov / z;   // 화면 크기에 맞춘 시야 (resizeCanvas에서 계산)
   return {
     x: view.w / 2 + (rx - cam.x) * s,
     y: view.h / 2 + (ry - cam.y) * s,
@@ -300,6 +320,8 @@ function resetRun(level) {
   state.slowT = 0;
   state.boostT = 0;
   state.drinks = 0;
+  state.revives = 0;
+  state.invulnT = 0;
   state.coverT = 0;
   state.shake = 0;
   state.deathBy = '';
@@ -629,6 +651,7 @@ function hitMeme(o) {
 }
 
 function checkObstacles() {
+  if (state.invulnT > 0) return;   // 부활 직후 무적
   const pz = state.distance + CONFIG.player.z;
   const size = CONFIG.player.size;
 
@@ -701,6 +724,7 @@ function collectCoins() {
 // ===== 충돌 판정 =====
 function checkFall() {
   if (!player.onGround) return;
+  if (state.invulnT > 0) return;   // 부활 직후 무적
   const pz = state.distance + CONFIG.player.z;
   const tol = CONFIG.player.size * 0.35;
   for (const h of holes) {
@@ -801,6 +825,7 @@ function update(dt) {
     if (state.stunT > 0) state.stunT -= dt;
     if (state.slowT > 0) state.slowT -= dt;
     if (state.boostT > 0) state.boostT -= dt;
+    if (state.invulnT > 0) state.invulnT -= dt;   // 부활 무적
 
     // 영기 멘트에 놀란 2초 동안은 속도가 확 붙는다 (그만큼 다음 장애물이 위험해짐)
     const boost = state.boostT > 0 ? YOUNGGI.boost : 1;
@@ -1729,7 +1754,9 @@ function drawPlayer() {
 
   // 발바닥 기준점
   const feet = project(player.x, floorY - player.height, z);
-  const alpha = state.phase === 'dying' ? Math.max(0, 1 + player.height / 420) : 1;
+  // 부활 직후 무적 동안은 깜빡인다
+  const blink = state.invulnT > 0 ? 0.45 + 0.55 * Math.abs(Math.sin(state.time * 18)) : 1;
+  const alpha = (state.phase === 'dying' ? Math.max(0, 1 + player.height / 420) : 1) * blink;
 
   // 점프 스트레치 / 착지 스쿼시
   let sx = 1, sy = 1;
@@ -1870,6 +1897,64 @@ function buySkin(key) {
   return true;
 }
 
+// ===== 멜라토닌 (부활 아이템) =====
+// 구매: 개당 100코인, 여러 개 살 수 있다
+function buyMelatonin() {
+  if (wallet.coins < MELATONIN.price) return false;
+  wallet.coins -= MELATONIN.price;
+  wallet.melatonin += 1;
+  saveWallet();
+  emit();
+  return true;
+}
+
+// 사용: 죽은 자리에서 그대로 이어서 달린다.
+// 첫 부활은 1개, 두 번째 부활은 2개를 쓰고, 한 판에 최대 2번까지만 가능하다.
+function useMelatonin() {
+  if (state.phase !== 'gameover') return false;
+  if (state.revives >= MELATONIN.maxRevives) return false;
+
+  const cost = state.revives + 1;
+  if (wallet.melatonin < cost) return false;
+
+  wallet.melatonin -= cost;
+  state.revives += 1;
+  saveWallet();
+
+  // 죽기 직전 위치에서 재개 (거리·코인은 그대로 유지)
+  state.phase = 'playing';
+  state.overInfo = null;
+  state.paused = false;
+  state.dyingRot = 0;
+  state.deathBy = '';
+  state.memeText = '';
+  state.coverT = 0;
+  state.stunT = 0;
+  state.boostT = 0;
+  state.speed = Math.max(currentLevel().base, state.speed * 0.7);  // 살짝 감속해서 재정비
+  state.invulnT = MELATONIN.invuln;                                 // 잠깐 무적
+
+  player.height = 0;
+  player.vy = 0;
+  player.vx = 0;
+  player.lean = 0;
+  player.squash = 0;
+  player.onGround = true;
+
+  // 부활 지점 주변의 구멍·방해꾼은 치워 준다 (되살아나자마자 또 죽지 않게)
+  const pz = state.distance + CONFIG.player.z;
+  const safeFrom = pz - 200;
+  const safeTo = pz + 800;
+  obstacles = obstacles.filter((o) => o.z + o.len < safeFrom || o.z > safeTo);
+  holes = holes.filter((h) => h.z + h.len < safeFrom || h.z > safeTo);
+
+  const p = playerScreenPos();
+  spawnBurst(p.x, p.y, [150, 220, 255], 30, 320);
+  spawnPop(p.x, p.y - 60, '쿨쿨… 다시!');
+  emit();
+  return true;
+}
+
 // ===== 뽕망치 (긴급 아이템) =====
 // 구매: 코인 차감, 동시 보유 1개까지(중복구매 방지)
 function buyHammer() {
@@ -1943,6 +2028,12 @@ function init(canvasEl, onState) {
 
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', resizeCanvas);
+  // 모바일 주소창이 접히거나 화면이 회전하면 보이는 영역이 바뀐다
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resizeCanvas);
+    window.visualViewport.addEventListener('scroll', resizeCanvas);
+  }
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   document.addEventListener('visibilitychange', onVisibility);
@@ -1965,6 +2056,11 @@ function init(canvasEl, onState) {
 function destroy() {
   cancelAnimationFrame(rafId);
   window.removeEventListener('resize', resizeCanvas);
+  window.removeEventListener('orientationchange', resizeCanvas);
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', resizeCanvas);
+    window.visualViewport.removeEventListener('scroll', resizeCanvas);
+  }
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
   document.removeEventListener('visibilitychange', onVisibility);
@@ -1984,6 +2080,8 @@ export {
   buySkin,
   buyHammer,
   useHammer,
+  buyMelatonin,
+  useMelatonin,
   setMove,
   jump,
   tap,

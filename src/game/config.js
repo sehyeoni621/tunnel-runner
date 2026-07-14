@@ -138,6 +138,11 @@ const DRINK = {
 // 잡히면 죽지 않지만, 멘트에 놀라 잠깐 미친 듯이 빨라진다 → 다음 장애물이 훨씬 위험해짐
 const YOUNGGI = { text: '10팍새퀴', boost: 1.75, dur: 2, rgb: [255, 143, 176] };
 
+// ===== 멜라토닌 (부활 아이템) =====
+// 죽었을 때 그 자리에서 다시 이어서 달릴 수 있다.
+// 한 판에서 첫 부활은 1개, 두 번째 부활은 2개 → 최대 2번까지만 살아난다.
+const MELATONIN = { price: 100, maxRevives: 2, invuln: 2 };  // invuln = 부활 직후 무적 시간(초)
+
 // ===== 뽕망치 (긴급 아이템) =====
 // price = 코인 가격, maxHold = 동시 보유 최대(중복구매 방지), range = 앞쪽 파괴 사거리(월드 단위)
 const HAMMER = { price: 80, maxHold: 1, range: 680 };
@@ -151,4 +156,4 @@ const MEMES = [
   { text: '옆자리 고를래?', rgb: [255, 150, 190] },
 ];
 
-export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK };
+export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN };

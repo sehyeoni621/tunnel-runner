@@ -45,6 +45,7 @@ export default function Hud({ game, onPause, onShop, onHammer }) {
           <div id="coin-hud">
             <CoinIcon />
             <span id="coin-count">{game.coins}</span>
+            {game.melatonin > 0 && <span id="melatonin-count" title="멜라토닌 (부활)">💊 {game.melatonin}</span>}
           </div>
         </div>
 
