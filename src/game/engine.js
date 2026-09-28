@@ -10,7 +10,7 @@
 // 렌더링만 state.roll 각도로 회전시켜 90° 전환 연출을 만든다.
 // =====================================================================
 
-import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN } from './config.js';
+import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN, MAP } from './config.js';
 import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
 import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
 import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet, loadProfile, saveProfile as persistProfile } from './save.js';
@@ -175,6 +175,8 @@ const input = { left: false, right: false };
 let holes = [];        // { x, width, z, len, face }
 let coins = [];        // { x, z, face, taken }
 let obstacles = [];    // { type, x, baseX, z, len, face, hit }
+let mapSegs = [];      // 맵 구간 { z, len, faces:[월드면...] } — 존재하는 면 목록
+let nextMapZ = 0;
 let nextSpawnZ = 0;
 let nextCoinZ = 0;
 let nextObsZ = 0;
@@ -338,6 +340,9 @@ function resetRun(level) {
   particles = [];
   zzz = [];
   pops = [];
+  // 시작 구간은 꽉 찬 터널로 고정, 이후부터 프리셋 구간을 이어붙인다
+  mapSegs = [{ z: -600, len: MAP.safeZone + 600, faces: [0, 1, 2, 3] }];
+  nextMapZ = MAP.safeZone;
   nextSpawnZ = CONFIG.hole.safeZone;
   nextCoinZ = CONFIG.coin.safeZone;
   nextObsZ = CONFIG.obstacle.safeZone;
@@ -434,6 +439,10 @@ function shiftGravity(dir) {
   const half = CONFIG.tunnel.size / 2;
   const size = CONFIG.player.size;
 
+  // 넘어갈 벽면이 이 구간에 존재하지 않으면 벽 타기 불가 (허공으로 못 올라감)
+  const target = dir === 'right' ? (state.surface + 3) % 4 : (state.surface + 1) % 4;
+  if (!facePresent(target, state.distance + CONFIG.player.z)) { wallHold = 0; return; }
+
   if (dir === 'right') {
     state.surface = (state.surface + 3) % 4;
     state.roll -= Math.PI / 2;
@@ -460,6 +469,67 @@ function shiftGravity(dir) {
 
   const p = playerScreenPos();
   spawnBurst(p.x, p.y, [184, 139, 234], 18, 260);
+}
+
+// ===== 발판 끊김 → 가장 가까운 벽면으로 낙하 =====
+// 현재 밟고 있는 면이 이 구간에 없으면(바닥 끊김) 죽지 않고 가까운 벽으로 떨어진다.
+function nearestFace() {
+  const pz = state.distance + CONFIG.player.z;
+  const right = (state.surface + 3) % 4;  // +x 쪽 벽
+  const left = (state.surface + 1) % 4;   // -x 쪽 벽
+  const opp = (state.surface + 2) % 4;    // 반대편(천장)
+  const rP = facePresent(right, pz), lP = facePresent(left, pz);
+  if (rP && lP) return player.x >= 0 ? right : left; // 더 가까운 쪽
+  if (rP) return right;
+  if (lP) return left;
+  if (facePresent(opp, pz)) return opp;
+  return -1; // 갈 면이 아예 없음
+}
+
+function fallToFace(target) {
+  const half = CONFIG.tunnel.size / 2;
+  const size = CONFIG.player.size;
+  const delta = ((target - state.surface) + 4) % 4; // 1=왼벽 3=오른벽 2=천장
+  const oldX = player.x;
+
+  state.surface = target;
+  if (delta === 1) {          // 왼쪽(+x) 벽으로 떨어짐 → shiftGravity('left')와 동일
+    state.roll += Math.PI / 2;
+    player.x = half - size / 2 - 4;
+  } else if (delta === 3) {   // 오른쪽(-x) 벽으로 떨어짐 → shiftGravity('right')와 동일
+    state.roll -= Math.PI / 2;
+    player.x = -half + size / 2 + 4;
+  } else {                    // 반대편(천장)으로 (드묾)
+    state.roll += Math.PI;
+    player.x = -oldX;
+  }
+
+  const clamp = half - size / 2 - 8;
+  player.x = Math.max(-clamp, Math.min(clamp, player.x));
+  player.height = 0;
+  player.vy = 0;
+  player.onGround = true;
+  player.vx = 0;
+  player.lean = 0;
+  player.squash = 0.36;  // 착지 반동 크게
+  rollAnim.from = state.roll;
+  rollAnim.t = 0;
+  wallHold = 0;
+
+  const p = playerScreenPos();
+  spawnBurst(p.x, p.y, [255, 200, 120], 22, 320);
+  spawnPop(p.x, p.y - 42, '휘청!');
+  state.shake = Math.max(state.shake, 0.26);
+}
+
+// 매 프레임: 밟고 있는 면이 사라졌으면 가까운 벽으로 낙하 (갈 면 없으면 그때만 사망)
+function checkSurfaceBreak() {
+  if (!player.onGround) return;
+  const pz = state.distance + CONFIG.player.z;
+  if (facePresent(state.surface, pz)) return;
+  const target = nearestFace();
+  if (target === -1) { die('void', '발 디딜 곳이 없었어요'); return; }
+  fallToFace(target);
 }
 
 // ===== 파티클 =====
@@ -504,6 +574,54 @@ function randFace() {
   return (state.surface + 1 + Math.floor(Math.random() * 3)) % 4;
 }
 
+// ===== 맵 구조: 구간별로 존재하는 면(발판)을 이어붙인다 =====
+// 레벨이 오를수록 '꽉 찬' 구간을 덜 뽑아 열린(면이 빠진) 구간이 자주 나온다.
+function pickPreset() {
+  const openBias = Math.min(0.9, 0.12 * (state.level - 1)); // 레벨↑ → full 가중치↓
+  let total = 0;
+  const weights = MAP.presets.map((p) => {
+    const w = p.name === 'full' ? p.w * (1 - openBias) : p.w;
+    total += w;
+    return w;
+  });
+  let r = Math.random() * total;
+  for (let i = 0; i < MAP.presets.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return MAP.presets[i];
+  }
+  return MAP.presets[0];
+}
+
+function spawnMap() {
+  const horizon = state.distance + CONFIG.tunnel.depth + 300;
+  while (nextMapZ < horizon) {
+    const p = pickPreset();
+    const len = rand(p.len[0], p.len[1]);
+    mapSegs.push({ z: nextMapZ, len, faces: p.faces });
+    nextMapZ += len;
+  }
+  const cutoff = state.distance + CONFIG.camera.nearZ - 300;
+  mapSegs = mapSegs.filter((m) => m.z + m.len > cutoff);
+}
+
+// 월드 면(0~3)이 월드 z 지점에 존재하는가 (= 밟을 수 있는가)
+function facePresent(worldFace, worldZ) {
+  for (const m of mapSegs) {
+    if (worldZ >= m.z && worldZ < m.z + m.len) return m.faces.includes(worldFace);
+  }
+  return true; // 아직 생성되지 않은 먼 구간은 존재로 간주
+}
+
+// 스폰용: 그 z에 '존재하는 면' 중에서만 뽑는다 (빈 공간에 장애물/코인이 뜨지 않게)
+// 현재 달리는 면을 우선 편향. 존재하는 면이 없으면 -1.
+function randPresentFace(worldZ) {
+  const present = [];
+  for (let f = 0; f < 4; f++) if (facePresent(f, worldZ)) present.push(f);
+  if (present.length === 0) return -1;
+  if (present.includes(state.surface) && Math.random() < CONFIG.hole.currentFaceBias) return state.surface;
+  return present[Math.floor(Math.random() * present.length)];
+}
+
 // 침대 앞 마지막 구간은 비워 둔다 (마지막 스퍼트)
 function spawnStopZ() {
   return state.goalZ - 700;
@@ -524,7 +642,8 @@ function spawnHoles() {
     const margin = width / 2 + 24;
     const x = rand(-T.size / 2 + margin, T.size / 2 - margin);
 
-    holes.push({ x, width, z: nextSpawnZ, len, face: randFace() });
+    const face = randPresentFace(nextSpawnZ);   // 존재하는 면에만 배치
+    if (face !== -1) holes.push({ x, width, z: nextSpawnZ, len, face });
 
     const difficulty = CONFIG.run.baseSpeed / state.speed;
     const gap = rand(H.minGap, Math.max(H.minGap + 60, H.maxGap * difficulty));
@@ -551,7 +670,8 @@ function spawnCoins() {
 
   while (nextCoinZ < horizon) {
     const count = Math.round(rand(C.rowMin, C.rowMax));
-    const face = randFace();
+    const face = randPresentFace(nextCoinZ);
+    if (face === -1) { nextCoinZ += count * C.spacing + rand(C.minGap, C.maxGap); continue; }
     const x = rand(-T.size / 2 + 60, T.size / 2 - 60);
 
     // 별사탕 줄 사이에 커피/에너지드링크를 섞어 둔다 (먹으면 침대가 멀어지는 함정)
@@ -559,6 +679,7 @@ function spawnCoins() {
 
     for (let i = 0; i < count; i++) {
       const z = nextCoinZ + i * C.spacing;
+      if (!facePresent(face, z)) continue;   // 그 면이 끊긴 구간엔 코인 생략
       if (!overlapsHole(face, x, z) && !overlapsObstacle(face, x, z, 40)) {
         if (i === drinkAt) {
           const kind = DRINK.kinds[Math.floor(Math.random() * DRINK.kinds.length)];
@@ -594,7 +715,7 @@ function spawnObstacles() {
   while (nextObsZ < horizon) {
     const type = types[Math.floor(Math.random() * types.length)];
     const spec = OBSTACLES[type];
-    const face = randFace();
+    const face = randPresentFace(nextObsZ);
     const lim = half - spec.w / 2 - 12;
 
     let x;
@@ -602,8 +723,9 @@ function spawnObstacles() {
     else if (spec.sway) x = 0;                                // 중앙 차선 점거
     else x = rand(-lim, lim);
 
-    // 구멍 위나 다른 방해꾼과 겹치면 이번 자리는 건너뛴다 (회피 불가 조합 방지)
-    if (!overlapsHole(face, x, nextObsZ) && !overlapsObstacle(face, x, nextObsZ, 120)) {
+    // 존재하는 면(양 끝 모두)에만, 구멍/다른 방해꾼과 안 겹칠 때만 배치
+    if (face !== -1 && facePresent(face, nextObsZ + spec.len) &&
+        !overlapsHole(face, x, nextObsZ) && !overlapsObstacle(face, x, nextObsZ, 120)) {
       obstacles.push({
         type, face, x, baseX: x,
         z: nextObsZ,
@@ -908,11 +1030,13 @@ function update(dt) {
       spawnBurst(p.x + rand(-12, 12), p.y + rand(-6, 14), hue, 1, 60);
     }
 
+    spawnMap();
     spawnHoles();
     spawnObstacles();
     spawnCoins();
     updateObstacles();
     collectCoins();
+    checkSurfaceBreak();   // 밟는 면이 사라졌으면 가까운 벽으로 낙하
     checkFall();
     checkObstacles();
     // 점수·진행도는 스냅샷(snapshot)에서 계산해 React로 넘어간다
@@ -1029,8 +1153,11 @@ function drawTunnel() {
     z1 = Math.min(z1, T.depth);
     if (z0 >= z1) continue;
     const zMid = (z0 + z1) / 2;
+    const worldZ = state.distance + zMid;
 
     for (let r = 0; r < 4; r++) {
+      // 이 구간에 해당 월드 면이 없으면(열린 발판) 그리지 않는다
+      if (!facePresent((state.surface + r) % 4, worldZ)) continue;
       const [ax, ay] = faceRot(-half, half, r);
       const [bx, by] = faceRot(half, half, r);
       quad(project(ax, ay, z0), project(bx, by, z0),
@@ -1075,33 +1202,51 @@ function drawTunnel() {
     ctx.stroke();
   }
 
-  // --- 세그먼트 경계 링 ---
+  // 상대 면(r)별 단면 모서리 · 코너 정의 (존재하는 면만 테두리를 그린다)
+  const REL_EDGES = [
+    { r: 0, a: [-half, half],  b: [half, half] },   // 바닥
+    { r: 3, a: [half, half],   b: [half, -half] },  // 오른벽
+    { r: 2, a: [half, -half],  b: [-half, -half] }, // 천장
+    { r: 1, a: [-half, -half], b: [-half, half] },  // 왼벽
+  ];
+  const REL_CORNERS = [
+    { p: [-half, half],  faces: [0, 1] },
+    { p: [half, half],   faces: [0, 3] },
+    { p: [half, -half],  faces: [3, 2] },
+    { p: [-half, -half], faces: [1, 2] },
+  ];
+
+  // --- 세그먼트 경계 링 (존재하는 면 모서리만) ---
   for (let k = 0; k < numSegs; k++) {
     const z = k * T.segmentLen - offset + T.segmentLen;
     if (z <= near || z > T.depth) continue;
+    const worldZ = state.distance + z;
     const fade = 1 - z / T.depth;
     ctx.strokeStyle = `rgba(184, 169, 224, ${fade * 0.5})`;
     ctx.lineWidth = Math.max(0.6, 2.2 * fade);
-    const a = project(-half, -half, z), b = project(half, -half, z),
-          c = project(half, half, z), d = project(-half, half, z);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-    ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y);
-    ctx.closePath();
-    ctx.stroke();
+    for (const e of REL_EDGES) {
+      if (!facePresent((state.surface + e.r) % 4, worldZ)) continue;
+      const pa = project(e.a[0], e.a[1], z), pb = project(e.b[0], e.b[1], z);
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    }
   }
 
-  // --- 모서리 세로 라인 ---
+  // --- 모서리 세로 라인 (양쪽 면 중 하나라도 있으면 그 구간만) ---
   ctx.strokeStyle = 'rgba(200, 185, 250, 0.65)';
   ctx.lineWidth = 1.6;
-  const corners = [[-half, -half], [half, -half], [half, half], [-half, half]];
-  for (const [x, y] of corners) {
-    const p0 = project(x, y, near);
-    const p1 = project(x, y, T.depth);
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.lineTo(p1.x, p1.y);
-    ctx.stroke();
+  for (let k = 0; k < numSegs; k++) {
+    let z0 = k * T.segmentLen - offset;
+    let z1 = z0 + T.segmentLen;
+    if (z1 <= near) continue;
+    z0 = Math.max(z0, near);
+    z1 = Math.min(z1, T.depth);
+    if (z0 >= z1) continue;
+    const worldZ = state.distance + (z0 + z1) / 2;
+    for (const c of REL_CORNERS) {
+      if (!c.faces.some((rf) => facePresent((state.surface + rf) % 4, worldZ))) continue;
+      const p0 = project(c.p[0], c.p[1], z0), p1 = project(c.p[0], c.p[1], z1);
+      ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+    }
   }
 }
 

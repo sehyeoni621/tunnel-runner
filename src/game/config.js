@@ -92,6 +92,22 @@ const CONFIG = {
   score: { unitsPerMeter: 100 }, // 월드 100단위 = 1m
 };
 
+// ===== 맵 구조 (구간별 프리셋) =====
+// 터널이 항상 닫힌 4면이 아니라, 구간마다 존재하는 면이 달라져 다양한 발판이 된다.
+// faces = 존재하는 '월드 면' (0=바닥 1=왼벽 2=천장 3=오른벽). 바닥(0)은 항상 포함(추락 안전).
+// w = 뽑힐 가중치. len = 구간 길이 범위. openBias(레벨별)로 '꽉 찬' 구간 비중을 조절.
+const MAP = {
+  safeZone: 1200,   // 시작 직후엔 꽉 찬 터널로 적응 구간
+  presets: [
+    { name: 'full',      faces: [0, 1, 2, 3], len: [700, 1100], w: 5 }, // 꽉 찬 터널
+    { name: 'corridor',  faces: [0, 1, 3],    len: [520, 820],  w: 4 }, // 천장 열림
+    { name: 'leftwall',  faces: [0, 1],       len: [420, 700],  w: 3 }, // 오른쪽·천장 열림
+    { name: 'rightwall', faces: [0, 3],       len: [420, 700],  w: 3 }, // 왼쪽·천장 열림
+    { name: 'open',      faces: [0],          len: [360, 640],  w: 3 }, // 사방 열린 외길 발판
+    { name: 'skywalk',   faces: [0, 2],       len: [340, 560],  w: 2 }, // 벽 없이 바닥+천장
+  ],
+};
+
 // ===== 레벨 (기획서 3절: 1~5 레벨제) =====
 // goal = 침대까지의 거리(m). 레벨이 오를수록 빨라지고 방해요인이 늘어난다.
 const LEVELS = [
@@ -158,4 +174,4 @@ const MEMES = [
   { text: '옆자리 고를래?', rgb: [255, 150, 190] },
 ];
 
-export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN };
+export { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN, MAP };
