@@ -155,7 +155,9 @@ export class Engine {
     this.dyn.clear();
     this.run = { dist: 0, x: 0, y: 0, vy: 0, speed: st.base, t: 0, hp: PLAYER.maxHp, coins: 0, keys: 0,
       eff: { shield: 0, magnet: 0, boots: 0 }, invuln: 0, meme: 0, memeLock: 0, revives: 0, grounded: true, coyote: 0,
-      reason: '', dieT: 0, clearT: 0, shake: 0, fell: false, reward: null };
+      reason: '', dieT: 0, clearT: 0, shake: 0, fell: false, reward: null,
+      stepZ: 0,       // 프레임당 전진량 (스윕 히트스캔용)
+      goalAdd: 0 };   // 에너지드링크로 멀어진 거리 (침대 위치 = st.goal + goalAdd)
     this.ents = home ? [] : this.generate(st);
     if (!home) { this.bed = this.clone('bed', 'bed'); this.bed.position.set(0, 0, -st.goal - 1.6); this.dyn.add(this.bed); }
     this.player.rotation.set(0, home ? 0 : Math.PI, 0);
@@ -165,8 +167,11 @@ export class Engine {
     const R = rng(Date.now() & 0xffff), ents = [], lanes = TUNNEL.laneX;
     let z = 32, nextItem = 60 + R() * 40;
     const pick = (a) => a[Math.floor(R() * a.length)];
-    while (z < st.goal - 24) {
-      const t = z / st.goal, gap = lerp(15, 9.5, t) + R() * 4;
+    // 에너지드링크로 골인선이 밀릴 수 있으므로 목표보다 GOAL_EXTRA 만큼 더 깔아둔다
+    // (안 마시면 볼 일 없는 구간이지만, 마셨을 때 텅 빈 복도를 달리지 않게 한다)
+    const GOAL_EXTRA = 180;
+    while (z < st.goal + GOAL_EXTRA - 24) {
+      const t = Math.min(1, z / st.goal), gap = lerp(15, 9.5, t) + R() * 4;
       let key = pick(st.obstacles);
       if (st.holes && R() < 0.14) key = 'platform';
       const blocked = new Set();
@@ -182,7 +187,7 @@ export class Engine {
         const li = Math.floor(R() * 3); ents.push({ kind: 'obs', key, z, x: lanes[li], x0: lanes[li], phase: R() * 6, y: key === 'fall' ? OBSTACLES.fall.startY : 0, vy: 0 }); blocked.add(li);
         if (t > 0.3 && R() < 0.35 && !['rotate', 'ghost'].includes(key)) { const l2 = (li + 1 + Math.floor(R() * 2)) % 3; ents.push({ kind: 'obs', key: 'spike', z: z + 0.2, x: lanes[l2], x0: lanes[l2] }); blocked.add(l2); }
       }
-      // 코인 줄 (가끔 함정 음료 섞임)
+      // 코인 줄 (가끔 에너지드링크가 섞여 있다)
       const free = [0, 1, 2].filter(i => !blocked.has(i)); const cl = free.length ? pick(free) : Math.floor(R() * 3);
       const n = Math.floor((gap - 5) / 1.5);
       for (let c = 0; c < n; c++) {
@@ -257,8 +262,14 @@ export class Engine {
   }
   resize() {
     const c = this.renderer.domElement, w = c.clientWidth || innerWidth, h = c.clientHeight || innerHeight;
-    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.w = w; this.h = h;
-    this.camera.fov = w / h < 0.8 ? 74 : 60; this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h, false);
+    const aspect = w / h; this.camera.aspect = aspect; this.w = w; this.h = h;
+    this.portrait = aspect < 0.85;
+    // 세로 화면에서도 3차선 터널이 다 보이도록 '수평 시야'(≈64°) 기준으로 세로 fov 역산
+    const hfov = 64 * Math.PI / 180;
+    const vfov = 2 * Math.atan(Math.tan(hfov / 2) / aspect) * 180 / Math.PI;
+    this.camera.fov = clamp(vfov, 58, 88);
+    this.camera.updateProjectionMatrix();
   }
 
   /* ── 루프 ── */
@@ -301,7 +312,8 @@ export class Engine {
     let speed = Math.min(st.max, st.base + RUN.accel * r.t);
     if (r.eff.boots > 0) speed *= RUN.bootsMul; if (r.meme > 0) speed *= RUN.memeSlowMul;
     r.speed = lerp(r.speed, speed, 0.08);
-    r.dist += r.speed * dt;
+    r.stepZ = r.speed * dt;   // 이번 프레임 전진량 — 스윕 히트스캔이 쓴다
+    r.dist += r.stepZ;
     // 좌우
     let ax = this.input.axis || ((this.input.right ? 1 : 0) - (this.input.left ? 1 : 0));
     if (r.memeLock > 0) ax = 0;
@@ -313,7 +325,7 @@ export class Engine {
     else { if (r.grounded) r.coyote = 0.1; r.grounded = false; r.coyote = Math.max(0, r.coyote - dt); }
     if (r.y < -0.4) { r.fell = true; this.die('구멍에 빠졌어요'); return; }
     this.collide(r);
-    if (r.dist >= st.goal) this.clear();
+    if (r.dist >= st.goal + r.goalAdd) this.clear();
   }
   groundAt(r) {
     for (const e of this.ents) if (e.kind === 'hole' && r.dist > e.z && r.dist < e.z + e.len) {
@@ -325,19 +337,26 @@ export class Engine {
   }
   collide(r) {
     const px = r.x, py = r.y, pz = r.dist;
+    // 스윕 판정: 한 프레임 전진량이 판정 구간보다 길 수 있다.
+    // (5스테이지 19.5m/s × 부츠 1.45 = 28.3m/s → 30fps에서 0.94m인데,
+    //  레이저 벽은 판정 깊이가 0.12m라 점으로 보면 통째로 뚫고 지나간다)
+    // 지나온 구간 [pz-step, pz]가 장애물 구간과 겹치는지로 본다.
+    const step = r.stepZ || 0, prevZ = pz - step;
     for (const e of this.ents) {
-      if (e.dead || Math.abs(e.z - pz) > 2.5) continue;
+      if (e.dead || Math.abs(e.z - pz) > 2.5 + step) continue;
       if (e.kind === 'coin' || e.kind === 'item') {
-        if (Math.abs(e.x - px) < 0.72 && Math.abs(e.z - pz) < RUN.pickupDist && py + 1.3 > e.y - 0.3 && py < e.y + 0.4) this.pickup(e);
+        const d = RUN.pickupDist;
+        if (Math.abs(e.x - px) < 0.72 && pz >= e.z - d && prevZ <= e.z + d && py + 1.3 > e.y - 0.3 && py < e.y + 0.4) this.pickup(e);
         continue;
       }
       if (e.kind !== 'obs' || e.key === 'platform') continue;
       const o = OBSTACLES[e.key], [hx, hh, hz] = o.hit;
       const y0 = e.key === 'fall' ? e.y : e.key === 'ghost' ? (e.bob || 0) : 0;
       if (e.key === 'laser' && !e.on) continue;
-      if (Math.abs(e.x - px) < hx + PLAYER.hitHalfW && Math.abs(e.z - pz) < hz + PLAYER.hitHalfD && py < y0 + hh && py + PLAYER.hitHeight > y0) {
+      const hd = hz + PLAYER.hitHalfD;
+      if (Math.abs(e.x - px) < hx + PLAYER.hitHalfW && pz >= e.z - hd && prevZ <= e.z + hd && py < y0 + hh && py + PLAYER.hitHeight > y0) {
         if (o.effect === 'cover') { e.dead = true; r.meme = o.coverTime; r.memeLock = 0.5; this.flash('앗, 밈이다!'); continue; }
-        if (e.key === 'drink') { e.dead = true; this.dispose(e); this.hurt('함정 음료를 마셨어요', true); continue; }
+        if (e.key === 'drink') { e.dead = true; this.dispose(e); this.drinkEnergy(); continue; }
         if (r.eff.shield > 0) { this.kill(e, 'blue', 14); continue; }
         if (o.effect === 'kill') { if (r.invuln > 0) continue; this.die('유령에게 붙잡혔어요'); return; }
         this.hurt(o.name + '에 부딪혔어요');
@@ -350,6 +369,15 @@ export class Engine {
     r.hp--; r.invuln = PLAYER.invulnAfterHit; r.shake = 0.3;
     this.burst(r.x, r.y + 0.6, -r.dist, 'red', 14, 3);
     if (r.hp <= 0) this.die(reason);
+  }
+  // 에너지드링크 — 체력은 그대로지만 잠이 깨서 침대(골인선)가 그만큼 뒤로 밀린다
+  drinkEnergy() {
+    const r = this.run, st = STAGES[this.stageIdx], m = OBSTACLES.drink.penalty;
+    r.goalAdd += m;
+    if (this.bed) this.bed.position.z = -(st.goal + r.goalAdd) - 1.6;
+    this.flash(`잠이 깼다! 침대가 ${m}m 멀어졌어요`);
+    r.shake = 0.18;
+    this.burst(r.x, r.y + 0.7, -r.dist, 'blue', 14, 2.4);
   }
   die(reason) { const r = this.run; r.reason = reason; r.dieT = 0; this.state = 'dying'; r.shake = 0.4; this.persistBest(); }
   persistBest() { const m = Math.floor(this.run.dist); if (m > this.save.best) this.save.best = m; this.save.coins += this.run.coins; this.run.banked = (this.run.banked || 0) + this.run.coins; this.run.coins = 0; writeSave(this.save); }
@@ -464,17 +492,19 @@ export class Engine {
       cam.position.lerp(new THREE.Vector3(1.6, 3.4, gz + 3.4), 0.06); cam.lookAt(0, 0.8, gz - 0.2 * k); return;
     }
     const s = r.shake > 0 ? (r.shake -= dt, r.shake * 0.25) : 0;
-    const target = new THREE.Vector3(r.x * 0.55 + (Math.random() - 0.5) * s, 2.15 + Math.max(0, r.y) * 0.35 + (Math.random() - 0.5) * s, -r.dist + 4.4);
+    // 세로 화면에선 카메라를 더 뒤·위로 빼서 터널·차선·다가오는 장애물이 다 보이게
+    const back = this.portrait ? 6.6 : 4.4, camY = this.portrait ? 2.7 : 2.15, look = this.portrait ? 8.5 : 6;
+    const target = new THREE.Vector3(r.x * (this.portrait ? 0.42 : 0.55) + (Math.random() - 0.5) * s, camY + Math.max(0, r.y) * 0.35 + (Math.random() - 0.5) * s, -r.dist + back);
     cam.position.lerp(target, 0.25);
-    cam.lookAt(r.x * 0.45, 1.05, -r.dist - 6);
+    cam.lookAt(r.x * 0.4, this.portrait ? 1.25 : 1.05, -r.dist - look);
   }
 
   /* ── 스냅샷 (엔진 → UI) ── */
   snapshot() {
     const r = this.run, st = STAGES[this.stageIdx], s = this.save;
     return {
-      screen: this.state, stageIdx: this.stageIdx, stageName: st.name, goal: st.goal,
-      dist: Math.floor(r.dist), progress: Math.round(clamp(r.dist / st.goal, 0, 1) * 200) / 200,
+      screen: this.state, stageIdx: this.stageIdx, stageName: st.name, goal: st.goal + r.goalAdd,
+      dist: Math.floor(r.dist), progress: Math.round(clamp(r.dist / (st.goal + r.goalAdd), 0, 1) * 200) / 200,
       hp: r.hp, maxHp: PLAYER.maxHp, runCoins: r.coins, keys: r.keys,
       score: Math.floor(r.dist) + (r.coins + (r.banked || 0)) * 10,
       eff: { shield: Math.ceil(r.eff.shield), magnet: Math.ceil(r.eff.magnet), boots: Math.ceil(r.eff.boots) },

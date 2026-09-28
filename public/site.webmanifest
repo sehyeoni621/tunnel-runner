@@ -4,7 +4,7 @@
   "description": "방해꾼을 피해 침대까지 달려가 꿀잠을 자는 3D 러너 게임",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#0b1030",
   "theme_color": "#0b1030",
   "icons": [
