@@ -13,7 +13,7 @@
 import { PAL, CONFIG, LEVELS, OBSTACLES, MEMES, HAMMER, YOUNGGI, DRINK, MELATONIN } from './config.js';
 import { getManifest, loadAssets, skinByKey, sprites } from './assets.js';
 import { drawRunnerBack, drawRunnerFront, drawStarShape, rr, outlined } from './characters.js';
-import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet } from './save.js';
+import { loadBest, saveBest as persistBest, loadWallet, saveWallet as persistWallet, loadProfile, saveProfile as persistProfile } from './save.js';
 
 // ===== 캔버스 =====
 let canvas = null;
@@ -54,6 +54,8 @@ function resizeCanvas() {
 // ===== 저장 데이터 =====
 let bestMeters = loadBest();
 let wallet = loadWallet(LEVELS.length);
+// 플레이어 프로필 (성별 · 닉네임) — 시작 화면에서 설정. 전체 흐름은 캐릭터 선택 단계에서 완성.
+let profile = loadProfile();
 
 function saveBest(m) { bestMeters = m; persistBest(m); }
 function saveWallet() { persistWallet(wallet); }
@@ -659,12 +661,17 @@ function checkObstacles() {
     if (o.hit || o.face !== state.surface) continue;
     const spec = OBSTACLES[o.type];
 
-    if (pz < o.z - size * 0.3 || pz > o.z + o.len + size * 0.3) continue;
-    if (Math.abs(player.x - o.x) > spec.w / 2 + size * 0.32) continue;
+    // 히트스캔 범위 — 실루엣(w/h)이 아니라 hitW/hitH 기준으로 판정한다.
+    // 좌우는 실루엣보다 좁게 잡아 아슬아슬한 스침은 살려주고, 앞뒤(z)도 살짝 안쪽만.
+    const hw = (spec.hitW ?? spec.w) / 2;
+    const hh = spec.hitH ?? spec.h;
+    const zPad = size * 0.15;
+    if (pz < o.z + zPad || pz > o.z + o.len - zPad) continue;
+    if (Math.abs(player.x - o.x) > hw) continue;
 
     // 세로 판정: 플레이어 몸통 [height, height+size] vs 장애물 [bottom, top]
     const bottom = spec.hover || 0;
-    const top = bottom + spec.h;
+    const top = bottom + hh;
     if (player.height >= top - 4 || player.height + size * 0.55 <= bottom) continue;
 
     o.hit = true;
@@ -1288,6 +1295,12 @@ function bubble(g, text, cx, cy, fill) {
   g.fillText(text, cx, cy);
 }
 
+// 해골이 건네는 인사 — 닉네임이 있으면 이름을 부르고, 없으면 일반 인사
+function greetingText() {
+  const nick = profile.nick && profile.nick.trim();
+  return nick ? `${nick}야 안녕~` : '안녕~ 반가워!';
+}
+
 function drawObstacleShape(g, o, t) {
   g.lineWidth = 2.2;
   g.lineJoin = 'round';
@@ -1444,11 +1457,11 @@ function drawObstacleShape(g, o, t) {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = PAL.navy;
-    g.fillText('권승민', 0, -17);
+    g.fillText('해골', 0, -17);
     g.restore();
 
     g.lineWidth = 2.2;
-    bubble(g, '지영아 안녕~', 0, -H - 18, '#FFF3D6');
+    bubble(g, greetingText(), 0, -H - 18, '#FFF3D6');
     return;
   }
 

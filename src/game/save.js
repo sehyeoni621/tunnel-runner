@@ -43,4 +43,29 @@ function saveWallet(wallet) {
   } catch (e) { /* 무시 */ }
 }
 
-export { loadBest, saveBest, loadWallet, saveWallet };
+// ===== 플레이어 프로필 (성별 · 닉네임 · 언어) =====
+const PROFILE_KEY = 'kkuljam.profile';
+
+function loadProfile() {
+  const fallback = { gender: 'female', nick: '', lang: 'ko', setup: false };
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROFILE_KEY));
+    if (!raw) return fallback;
+    return {
+      gender: raw.gender === 'male' ? 'male' : 'female',
+      nick: typeof raw.nick === 'string' ? raw.nick.slice(0, 12) : '',
+      lang: ['ko', 'en', 'ja', 'zh'].includes(raw.lang) ? raw.lang : 'ko',
+      setup: !!raw.setup,
+    };
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function saveProfile(profile) {
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  } catch (e) { /* 무시 */ }
+}
+
+export { loadBest, saveBest, loadWallet, saveWallet, loadProfile, saveProfile };

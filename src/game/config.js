@@ -97,27 +97,29 @@ const CONFIG = {
 const LEVELS = [
   { name: '거실 탈출',       goal: 300,  base: 560, max: 1050, holes: false, obstacles: ['sibling'],                                 reward: 30 },
   { name: '복도의 아빠',     goal: 450,  base: 640, max: 1350, holes: true,  obstacles: ['sibling', 'dad'],                          reward: 50 },
-  { name: '자니? 조혜민',    goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'younggi'],                    reward: 80 },
-  { name: '게임하자 김예은', goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'younggi'],             reward: 120 },
+  { name: '자니? 친구1',     goal: 600,  base: 720, max: 1600, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'younggi'],                    reward: 80 },
+  { name: '게임하자 친구2',  goal: 800,  base: 820, max: 1850, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'younggi'],             reward: 120 },
   { name: '새벽 3시의 릴스', goal: 1000, base: 920, max: 2100, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme', 'younggi'],     reward: 200 },
-  { name: '해골 오빠?',      goal: 1250, base: 980, max: 2250, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'younggi', 'seungmin'],           reward: 260 },
+  { name: '해골의 인사',     goal: 1250, base: 980, max: 2250, holes: true,  obstacles: ['sibling', 'dad', 'jo', 'kim', 'younggi', 'seungmin'],           reward: 260 },
   { name: '꿈나라 문턱',     goal: 1500, base: 1040, max: 2400, holes: true, obstacles: ['sibling', 'dad', 'jo', 'kim', 'meme', 'younggi', 'seungmin'],   reward: 400 },
 ];
 
 // ===== 방해요인 스펙 =====
-// w/h = 히트박스 크기(월드 단위). h가 낮으면 점프로 넘을 수 있다 (점프 최고점 ≈ 110).
+// w/h  = 그리기(실루엣) 크기. h가 낮으면 점프로 넘을 수 있다 (점프 최고점 ≈ 110).
+// hitW/hitH = 실제 충돌 판정 범위(월드 단위). 실루엣보다 살짝 작게 잡아 아슬아슬한
+//             스침은 살려준다 — 값이 없으면 w/h를 그대로 쓴다. (히트스캔 조정 지점)
 // lethal: false = 죽지 않고 감속/시야 방해만
 const OBSTACLES = {
-  sibling: { w: 150, h: 40,  len: 80,  lethal: true,  label: '동생',  hint: '점프로 넘기' },
-  dad:     { w: 168, h: 170, len: 110, lethal: true,  label: '아빠',  hint: '좌우로 피하기' },
-  jo:      { w: 118, h: 150, len: 90,  lethal: true,  label: '조혜민', hint: '벽에서 튀어나옴', edge: true, caught: '저런~' },
-  kim:     { w: 130, h: 155, len: 90,  lethal: true,  label: '김예은', hint: '중앙에서 좌우로 흔들림', sway: 92, caught: '김예은에게 불친절했어요ㅠㅠ' },
-  meme:    { w: 96,  h: 118, len: 70,  lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
-  younggi: { w: 138, h: 162, len: 100, lethal: false, label: '영기', hint: '멘트에 놀라 2초간 폭주' },
+  sibling:  { w: 150, h: 40,  len: 80,  hitW: 112, hitH: 44,  lethal: true,  label: '동생',  hint: '점프로 넘기' },
+  dad:      { w: 168, h: 170, len: 110, hitW: 120, hitH: 168, lethal: true,  label: '아빠',  hint: '좌우로 피하기' },
+  jo:       { w: 118, h: 150, len: 90,  hitW: 86,  hitH: 150, lethal: true,  label: '친구1', hint: '벽에서 튀어나옴', edge: true, caught: '저런~' },
+  kim:      { w: 130, h: 155, len: 90,  hitW: 92,  hitH: 155, lethal: true,  label: '친구2', hint: '중앙에서 좌우로 흔들림', sway: 92, caught: '친구2가 게임하자고 붙잡았어요' },
+  meme:     { w: 96,  h: 118, len: 70,  hitW: 74,  hitH: 118, lethal: false, label: '밈',   hint: '닿으면 감속 + 시야 방해', hover: 12 },
+  younggi:  { w: 138, h: 162, len: 100, hitW: 100, hitH: 160, lethal: false, label: '유령', hint: '멘트에 놀라 2초간 폭주' },
   seungmin: {
-    w: 140, h: 168, len: 100, lethal: true,
-    label: '권승민', hint: '해골이 손 흔들며 인사 — 좌우로 피하기',
-    caught: '해골 권승민이 반갑게 붙잡았어요',
+    w: 140, h: 168, len: 100, hitW: 104, hitH: 166, lethal: true,
+    label: '해골', hint: '해골이 손 흔들며 인사 — 좌우로 피하기',
+    caught: '해골이 반갑게 붙잡았어요',
   },
 };
 
@@ -134,9 +136,9 @@ const DRINK = {
   ],
 };
 
-// ===== 영기 (비살상 방해꾼) =====
-// 잡히면 죽지 않지만, 멘트에 놀라 잠깐 미친 듯이 빨라진다 → 다음 장애물이 훨씬 위험해짐
-const YOUNGGI = { text: '10팍새퀴', boost: 1.75, dur: 2, rgb: [255, 143, 176] };
+// ===== 유령 (비살상 방해꾼) =====
+// 잡히면 죽지 않지만, 갑툭튀에 놀라 잠깐 미친 듯이 빨라진다 → 다음 장애물이 훨씬 위험해짐
+const YOUNGGI = { text: '우와아악!!', boost: 1.75, dur: 2, rgb: [255, 143, 176] };
 
 // ===== 멜라토닌 (부활 아이템) =====
 // 죽었을 때 그 자리에서 다시 이어서 달릴 수 있다.
