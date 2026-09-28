@@ -1,5 +1,6 @@
 // 꿀잠 러너 V2 — UI 레이어 (DOM). 엔진 스냅샷을 받아 화면을 그린다.
 // React 이식 시: mountX() 하나가 컴포넌트 하나 (HomeScreen, Hud, Shop, ClearPanel, GameOverPanel, MemeCover, TouchControls, Settings, ProfileSetup)
+import './ui.css';
 import { Engine, createThumbnailer } from './engine.js';
 import { STAGES, SKINS, ITEMS, OBSTACLES } from './config.js';
 import { buildCharacter, poseCharacter, buildItem, buildObstacle, buildBed } from './models.js';
