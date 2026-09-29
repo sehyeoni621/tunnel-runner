@@ -1,10 +1,13 @@
 // 꿀잠 러너 V2 — 데이터 전용 설정 (튜닝값·스테이지·장애물·아이템·스킨)
 // 단위: 미터(m), 초(s). 게임 로직은 이 파일의 선언만 참조한다(데이터 주도).
 
-export const TUNNEL = { width: 4.4, height: 3.6, segLen: 6, segCount: 16, laneX: [-1.35, 0, 1.35], clampX: 1.7 };
+// 터널 치수 — 캐릭터 키 ≈ 1.27m(후드 top), 어깨폭 ≈ 0.68m 기준으로 잡았다.
+// 레인 x는 바닥 타일(폭 W/3) 중앙과 일치시켜 발판이 눈에 바로 읽히게 한다.
+export const TUNNEL = { width: 5.7, height: 4.6, segLen: 7, segCount: 16, laneX: [-1.9, 0, 1.9], clampX: 2.25 };
 
 export const PLAYER = {
-  lateralSpeed: 7.5, jumpVel: 7.4, gravity: 21, maxHp: 3,
+  // lateralSpeed는 레인 간격에 비례 — 중앙↔바깥 레인 이동이 항상 0.18초가 되게 맞춘다
+  lateralSpeed: 10.5, jumpVel: 7.4, gravity: 21, maxHp: 3,
   hitHalfW: 0.28, hitHeight: 0.95, hitHalfD: 0.28,
   invulnAfterHit: 1.2, invulnAfterRevive: 2.0, maxRevives: 2,
 };
@@ -45,7 +48,8 @@ export const OBSTACLES = {
   fall:   { name: '낙하 블록', desc: '일정 시간 후 떨어짐', effect: 'damage', hit: [0.44, 0.9, 0.42], avoid: '좌우', triggerDist: 15, startY: 3.0 },
   ghost:  { name: '유령', desc: '접촉 시 게임 오버', effect: 'kill', hit: [0.38, 1.5, 0.3], avoid: '좌우', sway: 1.0, swaySpeed: 1.1 },
   meme:   { name: '밈', desc: '접촉 시 화면 가림', effect: 'cover', hit: [0.4, 1.3, 0.3], avoid: '좌우', coverTime: 2.2 },
-  drink:  { name: '함정 음료', desc: '체력 감소', effect: 'damage', hit: [0.3, 0.7, 0.3], avoid: '줍지 않기', pickup: true },
+  // 에너지드링크: 마시면 잠이 깨서 침대(골인)가 penalty(m)만큼 멀어진다. 체력은 깎이지 않는다.
+  drink:  { name: '에너지드링크', desc: '마시면 침대가 멀어짐', effect: 'delay', hit: [0.3, 0.7, 0.3], avoid: '줍지 않기', pickup: true, penalty: 25 },
 };
 
 // 아이템 (시안: 아이템 디자인). source: run=인게임 픽업, shop=상점 구매
