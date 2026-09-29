@@ -8,6 +8,9 @@ import { buildCharacter, poseCharacter, buildItem, buildObstacle, buildBed } fro
 const $ = (s) => document.querySelector(s);
 const layer = $('#layer'), hud = $('#hud'), memeEl = $('#meme'), toastEl = $('#toast');
 const isTouch = matchMedia('(pointer: coarse)').matches;
+// 폰(터치 + 짧은 변 ≤ 560px)에서만 모바일 전용 스타일을 불러온다 (데스크톱·태블릿 제외)
+const isPhone = isTouch && (matchMedia('(max-width: 560px)').matches || matchMedia('(max-height: 560px)').matches);
+if (isPhone) import('./mobile.css');
 
 /* ── 썸네일 (3D 모델 → 이미지) ── */
 const th = createThumbnailer();
