@@ -1,32 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#241a52"/>
+      <stop offset="0" stop-color="#2b2f66"/>
       <stop offset="1" stop-color="#0b1030"/>
     </linearGradient>
-    <radialGradient id="moon" cx="38%" cy="34%" r="70%">
+    <linearGradient id="moon" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#ffe9a8"/>
-      <stop offset="1" stop-color="#ffc84a"/>
-    </radialGradient>
+      <stop offset="1" stop-color="#ffc23a"/>
+    </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <!-- 별 몇 개 -->
-  <g fill="#fff6c0">
-    <circle cx="96" cy="120" r="6"/>
-    <circle cx="430" cy="150" r="5"/>
-    <circle cx="150" cy="360" r="4.5"/>
-    <circle cx="392" cy="392" r="4"/>
+  <rect width="512" height="512" rx="118" fill="url(#bg)"/>
+  <!-- 별 -->
+  <g fill="#fff2c0">
+    <circle cx="92" cy="132" r="7"/>
+    <circle cx="150" cy="418" r="5"/>
+    <circle cx="418" cy="392" r="6"/>
   </g>
-  <!-- 초승달 -->
-  <path d="M330 118 A150 150 0 1 0 330 394 A118 118 0 1 1 330 118 Z"
-        fill="url(#moon)" stroke="#b0791f" stroke-width="6" stroke-linejoin="round"/>
-  <!-- 달의 볼터치 · 감은 눈 -->
-  <circle cx="232" cy="270" r="22" fill="#ffb0c8" opacity="0.75"/>
-  <path d="M196 236 q16 16 32 0" fill="none" stroke="#7a4a12" stroke-width="9" stroke-linecap="round"/>
-  <!-- Zzz -->
-  <g fill="#ff8fd0" font-family="'Jua','Segoe UI',sans-serif" font-weight="700">
-    <text x="392" y="150" font-size="52">z</text>
-    <text x="424" y="112" font-size="72">z</text>
-    <text x="360" y="120" font-size="40" fill="#ffd34d">z</text>
+  <!-- 크고 가운데 놓인 초승달 -->
+  <path d="M312 92 A170 170 0 1 0 312 420 A130 130 0 1 1 312 92 Z"
+        fill="url(#moon)" stroke="#a86f16" stroke-width="9" stroke-linejoin="round"/>
+  <!-- 졸린 얼굴 (감은 눈 + 볼터치 + 미소) -->
+  <g transform="translate(206,250)" stroke="#9a6a12" stroke-linecap="round" fill="none">
+    <path d="M-58 -8 q20 22 40 0" stroke-width="13"/>
+    <path d="M14 -8 q20 22 40 0" stroke-width="13"/>
+    <path d="M-16 42 q18 16 34 0" stroke-width="10"/>
+  </g>
+  <g fill="#ff9ec0" opacity="0.72">
+    <ellipse cx="150" cy="300" rx="20" ry="12"/>
+    <ellipse cx="242" cy="300" rx="20" ry="12"/>
+  </g>
+  <!-- Zzz (도형으로 그려 폰트 의존 없음) -->
+  <g fill="none" stroke="#ff8fd0" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M352 156 h34 l-34 42 h34"/>
+    <path d="M406 98 h46 l-46 56 h46"/>
   </g>
 </svg>

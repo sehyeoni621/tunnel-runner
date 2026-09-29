@@ -55,6 +55,9 @@ input{-webkit-user-select:text;user-select:text;touch-action:manipulation}
 .modal{width:100%!important;max-height:calc(100vh - 40px - var(--sat));border-radius:26px 26px 0 0;border-bottom:0;padding:30px 16px calc(18px + var(--sab));gap:14px;animation:sheetUp .28s cubic-bezier(.2,.9,.3,1)}
 @keyframes sheetUp{from{transform:translateY(40%);opacity:.3}}
 .modal h2{font-size:28px;margin-top:10px}
+.modal .logo{margin-top:0}         /* 홈 전용 로고 여백이 모달(첫 시작 화면)에 새는 것 방지 */
+.modal .logo h1{font-size:40px}    /* 시작 화면 로고를 시트 안에 맞게 컴팩트하게 */
+.modal .logo .sub{font-size:15px}
 .modal .row{flex-direction:column;align-items:stretch}
 .modal .row .cta,.modal .row .btn2{width:100%}
 .modal-bg[style]{place-items:end center!important;background:rgba(5,8,30,.35)!important}
